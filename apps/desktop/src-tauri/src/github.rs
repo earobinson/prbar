@@ -106,11 +106,26 @@ impl GitHubClient {
             .collect())
     }
 
-    pub fn validate(&self) -> bool {
+    /// Validate the token by calling `GET /user`, which works for both
+    /// classic and fine-grained tokens and requires no permissions.
+    ///
+    /// Returns `Ok(true)` on success, `Ok(false)` when GitHub explicitly
+    /// rejects the credentials (401/403), and `Err` for any other failure
+    /// (network/TLS/unexpected status) so callers can surface the real
+    /// reason instead of reporting a working token as "invalid".
+    pub fn validate(&self) -> Result<bool, GitHubError> {
         let url = format!("{}/user", self.base_url);
-        match self.request(&url).send() {
-            Ok(response) => response.status().is_success(),
-            Err(_) => false,
+        let response = self
+            .request(&url)
+            .send()
+            .map_err(|e| GitHubError::Network(e.to_string()))?;
+        let status = response.status();
+        if status.is_success() {
+            Ok(true)
+        } else if status.as_u16() == 401 || status.as_u16() == 403 {
+            Ok(false)
+        } else {
+            Err(GitHubError::Status(status.as_u16()))
         }
     }
 }
@@ -118,6 +133,8 @@ impl GitHubClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
 
     #[test]
     fn parses_repository_from_url() {
@@ -126,5 +143,44 @@ mod tests {
             "octocat/hello-world"
         );
         assert_eq!(repository_from_url("nonsense"), "nonsense");
+    }
+
+    /// Start a throwaway HTTP server that answers a single request with the
+    /// given status line, returning its base URL.
+    fn serve_once(status_line: &'static str) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                let body = "{}";
+                let response = format!(
+                    "HTTP/1.1 {status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    #[test]
+    fn validate_is_true_on_success() {
+        let client = GitHubClient::with_base_url("tok", serve_once("200 OK"));
+        assert!(client.validate().unwrap());
+    }
+
+    #[test]
+    fn validate_is_false_when_unauthorized() {
+        let client = GitHubClient::with_base_url("tok", serve_once("401 Unauthorized"));
+        assert!(!client.validate().unwrap());
+    }
+
+    #[test]
+    fn validate_errors_on_unexpected_status() {
+        let client =
+            GitHubClient::with_base_url("tok", serve_once("500 Internal Server Error"));
+        assert!(client.validate().is_err());
     }
 }

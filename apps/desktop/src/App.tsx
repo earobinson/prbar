@@ -65,11 +65,18 @@ export function App() {
 
   async function handleValidate(account: GitHubAccount) {
     setStatuses((prev) => ({ ...prev, [account.id]: "Validating…" }));
-    const ok = await api.validateAccount(account.id);
-    setStatuses((prev) => ({
-      ...prev,
-      [account.id]: ok ? "Token is valid" : "Token is invalid",
-    }));
+    try {
+      const ok = await api.validateAccount(account.id);
+      setStatuses((prev) => ({
+        ...prev,
+        [account.id]: ok ? "Token is valid" : "Token is invalid",
+      }));
+    } catch (err) {
+      setStatuses((prev) => ({
+        ...prev,
+        [account.id]: `Validation failed: ${String(err)}`,
+      }));
+    }
   }
 
   function handleDuplicate(query: Query) {

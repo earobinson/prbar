@@ -135,6 +135,17 @@ describe("App", () => {
     );
   });
 
+  it("shows the failure reason when validation errors", async () => {
+    validateAccount.mockRejectedValue("github returned status 500");
+    render(<App />);
+    fireEvent.click(screen.getByText("Validate Token"));
+    await waitFor(() =>
+      expect(
+        screen.getByText("Validation failed: github returned status 500"),
+      ).toBeInTheDocument(),
+    );
+  });
+
   it("removes an account", () => {
     render(<App />);
     fireEvent.click(screen.getByText("Remove"));

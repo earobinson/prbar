@@ -55,7 +55,15 @@ pub fn validate_account(state: State<'_, AppState>, id: String) -> Result<bool, 
         Ok(token) => token,
         Err(_) => return Ok(false),
     };
-    Ok(GitHubClient::new(token).validate())
+    // Run the blocking GitHub client on a dedicated thread so it never
+    // executes inside the Tauri async runtime context (which makes
+    // reqwest's blocking client error out). Real errors are propagated so
+    // the UI can show why validation failed instead of masking a network
+    // problem as an invalid token.
+    std::thread::spawn(move || GitHubClient::new(token).validate())
+        .join()
+        .map_err(|_| "validation thread panicked".to_string())?
+        .map_err(to_str)
 }
 
 #[tauri::command]
@@ -80,12 +88,13 @@ pub fn list_matches(state: State<'_, AppState>) -> Result<Vec<Match>, String> {
 }
 
 #[tauri::command]
-pub fn refresh_now(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    poller::poll_all(&app, &state.db);
-    Ok(())
+pub fn refresh_now(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    // Poll on a dedicated thread so the blocking GitHub client does not run
+    // inside the Tauri async runtime context.
+    let db = state.db.clone();
+    std::thread::spawn(move || poller::poll_all(&app, &db))
+        .join()
+        .map_err(|_| "refresh thread panicked".to_string())
 }
 
 #[tauri::command]
