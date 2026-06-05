@@ -22,6 +22,16 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .on_window_event(|window, event| {
+            // Closing the settings window should hide it, not quit the app.
+            // PRBar only quits via the tray menu's "Quit" action.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "settings" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .setup(|app| {
             let dir = app
                 .path()
