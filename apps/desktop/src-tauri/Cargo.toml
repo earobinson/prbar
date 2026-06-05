@@ -25,6 +25,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"
 uuid = { version = "1", features = ["v4"] }
 urlencoding = "2"
 thiserror = "2"
+aes-gcm = "0.10"
+base64 = "0.22"
+getrandom = "0.2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

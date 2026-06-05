@@ -81,4 +81,47 @@ describe("api", () => {
       url: "https://example.com",
     });
   });
+
+  it("setAccountToken forwards id and token", async () => {
+    await api.setAccountToken("a1", "tok");
+    expect(invoke).toHaveBeenCalledWith("set_account_token", {
+      id: "a1",
+      token: "tok",
+    });
+  });
+
+  it("listLogs calls the right command", async () => {
+    invoke.mockResolvedValue([]);
+    await api.listLogs();
+    expect(invoke).toHaveBeenCalledWith("list_logs");
+  });
+
+  it("clearLogs calls the right command", async () => {
+    await api.clearLogs();
+    expect(invoke).toHaveBeenCalledWith("clear_logs");
+  });
+
+  it("getLogSettings calls the right command", async () => {
+    invoke.mockResolvedValue({ level: "info", retentionDays: 3 });
+    await api.getLogSettings();
+    expect(invoke).toHaveBeenCalledWith("get_log_settings");
+  });
+
+  it("setLogSettings forwards the settings", async () => {
+    const settings = { level: "debug" as const, retentionDays: 7 };
+    await api.setLogSettings(settings);
+    expect(invoke).toHaveBeenCalledWith("set_log_settings", { settings });
+  });
+
+  it("getDevSettings calls the right command", async () => {
+    invoke.mockResolvedValue({ tokenStorage: "keychain" });
+    await api.getDevSettings();
+    expect(invoke).toHaveBeenCalledWith("get_dev_settings");
+  });
+
+  it("setDevSettings forwards the settings", async () => {
+    const settings = { tokenStorage: "database" as const };
+    await api.setDevSettings(settings);
+    expect(invoke).toHaveBeenCalledWith("set_dev_settings", { settings });
+  });
 });

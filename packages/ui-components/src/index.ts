@@ -8,3 +8,7 @@ export { QueryList } from "./QueryList";
 export type { QueryListProps } from "./QueryList";
 export { MatchMenu } from "./MatchMenu";
 export type { MatchMenuProps, MenuMatch } from "./MatchMenu";
+export { LogsPanel } from "./LogsPanel";
+export type { LogsPanelProps } from "./LogsPanel";
+export { DevPanel } from "./DevPanel";
+export type { DevPanelProps } from "./DevPanel";

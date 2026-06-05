@@ -7,6 +7,7 @@ use tauri_plugin_notification::NotificationExt;
 use crate::db::Db;
 use crate::engine::{diff_matches, notifications_for, MatchDiff};
 use crate::github::GitHubClient;
+use crate::logging;
 use crate::models::{Match, Query};
 use crate::secrets;
 use crate::tray;
@@ -29,6 +30,12 @@ pub fn spawn(app: AppHandle, db: Arc<Db>) {
                 Err(_) => continue,
             };
 
+            // Enforce the log retention window once per wake so old lines are
+            // pruned even while the app stays open for days.
+            if let Ok(settings) = db.get_log_settings() {
+                let _ = db.prune_logs(settings.retention_days);
+            }
+
             let now = Instant::now();
             for query in queries.iter().filter(|q| q.enabled) {
                 let interval = Duration::from_secs(clamp_interval(
@@ -40,7 +47,7 @@ pub fn spawn(app: AppHandle, db: Arc<Db>) {
                     .unwrap_or(true);
                 if due {
                     if let Err(err) = poll_query(&app, &db, query) {
-                        eprintln!("poll error: {err}");
+                        logging::error(err);
                     }
                     tray::update_indicator(&app);
                     last_polled.insert(query.id.clone(), Instant::now());
@@ -66,6 +73,7 @@ pub fn poll_all(app: &AppHandle, db: &Db) -> Vec<String> {
     let mut errors = Vec::new();
     for query in queries.iter().filter(|q| q.enabled) {
         if let Err(err) = poll_query(app, db, query) {
+            logging::error(err.clone());
             errors.push(err);
         }
     }
@@ -74,7 +82,12 @@ pub fn poll_all(app: &AppHandle, db: &Db) -> Vec<String> {
 }
 
 fn poll_query(app: &AppHandle, db: &Db, query: &Query) -> Result<(), String> {
-    let (_, diff) = sync_query(db, query)?;
+    let (matches, diff) = sync_query(db, query)?;
+    logging::debug(format!(
+        "{}: fetched {} matching pull request(s)",
+        query.name,
+        matches.len()
+    ));
 
     for notification in notifications_for(query, &diff) {
         let _ = app
@@ -92,9 +105,9 @@ fn poll_query(app: &AppHandle, db: &Db, query: &Query) -> Result<(), String> {
 /// of any `AppHandle`/tray/notification concerns so it is unit-testable and so
 /// every failure mode yields an actionable message instead of a silent no-op.
 fn sync_query(db: &Db, query: &Query) -> Result<(Vec<Match>, MatchDiff), String> {
-    let token = secrets::get_token(&query.account_id).map_err(|e| {
+    let token = secrets::get_token(db, &query.account_id).map_err(|e| {
         format!(
-            "{}: no token found in the keychain ({e}). Open Settings → Accounts and use \"Update Token\".",
+            "{}: no token found ({e}). Open Settings → Accounts and use \"Update Token\".",
             query.name
         )
     })?;

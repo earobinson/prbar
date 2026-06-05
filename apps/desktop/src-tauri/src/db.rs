@@ -3,19 +3,29 @@ use std::sync::Mutex;
 
 use rusqlite::{params, Connection};
 
-use crate::models::{CachedMatch, GitHubAccount, Match, Query};
+use crate::crypto::TokenKey;
+use crate::models::{
+    CachedMatch, DevSettings, GitHubAccount, LogEntry, LogLevel, LogSettings, Match, Query,
+    TokenStorage,
+};
 
-/// Thread-safe SQLite store. Tokens are NEVER stored here; only account
-/// metadata, queries and cached match identities live in SQLite.
+/// Thread-safe SQLite store. Account metadata, queries and cached match
+/// identities live here. Tokens are only stored here when the developer setting
+/// selects the database backend, and then only AES-256-GCM encrypted with a key
+/// held outside the database (see [`crate::crypto`]).
 pub struct Db {
     conn: Mutex<Connection>,
+    token_key: TokenKey,
 }
 
 impl Db {
     pub fn open(path: &Path) -> rusqlite::Result<Self> {
         let conn = Connection::open(path)?;
+        let token_key = TokenKey::load_or_create(path)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         let db = Db {
             conn: Mutex::new(conn),
+            token_key,
         };
         db.migrate()?;
         Ok(db)
@@ -24,8 +34,11 @@ impl Db {
     #[cfg(test)]
     pub fn open_in_memory() -> rusqlite::Result<Self> {
         let conn = Connection::open_in_memory()?;
+        let token_key = TokenKey::random()
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
         let db = Db {
             conn: Mutex::new(conn),
+            token_key,
         };
         db.migrate()?;
         Ok(db)
@@ -63,6 +76,37 @@ impl Db {
               updated_at TEXT NOT NULL,
               PRIMARY KEY(query_id, pull_request_id)
             );
+
+            CREATE TABLE IF NOT EXISTS logs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              timestamp TEXT NOT NULL,
+              level TEXT NOT NULL,
+              message TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
+
+            CREATE TABLE IF NOT EXISTS log_settings (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              level TEXT NOT NULL,
+              retention_days INTEGER NOT NULL
+            );
+
+            INSERT OR IGNORE INTO log_settings (id, level, retention_days)
+              VALUES (1, 'info', 3);
+
+            CREATE TABLE IF NOT EXISTS tokens (
+              account_id TEXT PRIMARY KEY,
+              token TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS dev_settings (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              token_storage TEXT NOT NULL
+            );
+
+            INSERT OR IGNORE INTO dev_settings (id, token_storage)
+              VALUES (1, 'keychain');
             ",
         )?;
         Ok(())
@@ -269,12 +313,218 @@ impl Db {
         })?;
         rows.collect()
     }
+
+    // Logs -------------------------------------------------------------------
+
+    /// Append a log line, timestamped with the current UTC time (via SQLite so
+    /// no date crate is needed). Callers are expected to have already applied
+    /// the level filter; this method always inserts.
+    pub fn insert_log(&self, level: LogLevel, message: &str) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO logs (timestamp, level, message)
+             VALUES (datetime('now'), ?1, ?2)",
+            params![level.as_str(), message],
+        )?;
+        Ok(())
+    }
+
+    /// Most recent log lines first, capped at `limit`.
+    pub fn list_logs(&self, limit: i64) -> rusqlite::Result<Vec<LogEntry>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, timestamp, level, message
+             FROM logs ORDER BY id DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit], |row| {
+            let level: String = row.get(2)?;
+            Ok(LogEntry {
+                id: row.get(0)?,
+                timestamp: row.get(1)?,
+                level: LogLevel::parse(&level).unwrap_or(LogLevel::Info),
+                message: row.get(3)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    pub fn clear_logs(&self) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM logs", [])?;
+        Ok(())
+    }
+
+    /// Delete log lines older than `retention_days`. A non-positive retention
+    /// clears all history.
+    pub fn prune_logs(&self, retention_days: i64) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        if retention_days <= 0 {
+            conn.execute("DELETE FROM logs", [])?;
+            return Ok(());
+        }
+        let cutoff = format!("-{retention_days} days");
+        conn.execute(
+            "DELETE FROM logs WHERE timestamp < datetime('now', ?1)",
+            params![cutoff],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_log_settings(&self) -> rusqlite::Result<LogSettings> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT level, retention_days FROM log_settings WHERE id = 1")?;
+        let mut rows = stmt.query_map([], |row| {
+            let level: String = row.get(0)?;
+            Ok(LogSettings {
+                level: LogLevel::parse(&level).unwrap_or(LogLevel::Info),
+                retention_days: row.get(1)?,
+            })
+        })?;
+        match rows.next() {
+            Some(settings) => settings,
+            None => Ok(LogSettings::default()),
+        }
+    }
+
+    pub fn set_log_settings(&self, settings: &LogSettings) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO log_settings (id, level, retention_days)
+             VALUES (1, ?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET
+                level = excluded.level,
+                retention_days = excluded.retention_days",
+            params![settings.level.as_str(), settings.retention_days],
+        )?;
+        Ok(())
+    }
+
+    /// Insert a log line with an explicit timestamp. Test-only helper used to
+    /// exercise retention pruning without waiting for real time to pass.
+    #[cfg(test)]
+    pub fn insert_log_at(
+        &self,
+        timestamp: &str,
+        level: LogLevel,
+        message: &str,
+    ) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO logs (timestamp, level, message) VALUES (?1, ?2, ?3)",
+            params![timestamp, level.as_str(), message],
+        )?;
+        Ok(())
+    }
+
+    // Token storage (database backend) ---------------------------------------
+
+    /// Store an AES-256-GCM-encrypted token row in SQLite. Only used when the
+    /// developer setting selects the database backend; the keychain backend
+    /// never touches this table. The plaintext token never hits disk.
+    pub fn store_db_token(&self, account_id: &str, token: &str) -> rusqlite::Result<()> {
+        let encrypted = self
+            .token_key
+            .encrypt(token)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO tokens (account_id, token) VALUES (?1, ?2)
+             ON CONFLICT(account_id) DO UPDATE SET token = excluded.token",
+            params![account_id, encrypted],
+        )?;
+        Ok(())
+    }
+
+    /// Read and decrypt a token from SQLite. `Ok(None)` means no row exists.
+    pub fn get_db_token(&self, account_id: &str) -> rusqlite::Result<Option<String>> {
+        let encrypted: Option<String> = {
+            let conn = self.conn.lock().unwrap();
+            let mut stmt =
+                conn.prepare("SELECT token FROM tokens WHERE account_id = ?1")?;
+            let mut rows =
+                stmt.query_map(params![account_id], |row| row.get::<_, String>(0))?;
+            match rows.next() {
+                Some(token) => Some(token?),
+                None => None,
+            }
+        };
+        match encrypted {
+            Some(blob) => {
+                let plaintext = self
+                    .token_key
+                    .decrypt(&blob)
+                    .map_err(|e| rusqlite::Error::FromSqlConversionFailure(
+                        0,
+                        rusqlite::types::Type::Text,
+                        Box::new(e),
+                    ))?;
+                Ok(Some(plaintext))
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub fn delete_db_token(&self, account_id: &str) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM tokens WHERE account_id = ?1",
+            params![account_id],
+        )?;
+        Ok(())
+    }
+
+    /// Read the raw (still-encrypted) token cell. Test-only helper used to prove
+    /// the value persisted to disk is ciphertext, not plaintext.
+    #[cfg(test)]
+    pub fn raw_db_token(&self, account_id: &str) -> rusqlite::Result<Option<String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt =
+            conn.prepare("SELECT token FROM tokens WHERE account_id = ?1")?;
+        let mut rows =
+            stmt.query_map(params![account_id], |row| row.get::<_, String>(0))?;
+        match rows.next() {
+            Some(token) => Ok(Some(token?)),
+            None => Ok(None),
+        }
+    }
+
+    // Developer settings -----------------------------------------------------
+
+    pub fn get_dev_settings(&self) -> rusqlite::Result<DevSettings> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt =
+            conn.prepare("SELECT token_storage FROM dev_settings WHERE id = 1")?;
+        let mut rows = stmt.query_map([], |row| {
+            let storage: String = row.get(0)?;
+            Ok(DevSettings {
+                token_storage: TokenStorage::parse(&storage)
+                    .unwrap_or(TokenStorage::Keychain),
+            })
+        })?;
+        match rows.next() {
+            Some(settings) => settings,
+            None => Ok(DevSettings::default()),
+        }
+    }
+
+    pub fn set_dev_settings(&self, settings: &DevSettings) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO dev_settings (id, token_storage) VALUES (1, ?1)
+             ON CONFLICT(id) DO UPDATE SET token_storage = excluded.token_storage",
+            params![settings.token_storage.as_str()],
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{GitHubAccount, Match, Query};
+    use crate::models::{
+        DevSettings, GitHubAccount, LogLevel, LogSettings, Match, Query, TokenStorage,
+    };
 
     fn sample_query(id: &str, account_id: &str) -> Query {
         Query {
@@ -393,5 +643,112 @@ mod tests {
         let menu = db.menu_matches().unwrap();
         assert_eq!(menu.len(), 1);
         assert_eq!(menu[0].pull_request_id, 1);
+    }
+
+    #[test]
+    fn log_settings_default_then_update() {
+        let db = Db::open_in_memory().unwrap();
+        // Migration seeds the default row: info / 3 days.
+        let settings = db.get_log_settings().unwrap();
+        assert_eq!(settings.level, LogLevel::Info);
+        assert_eq!(settings.retention_days, 3);
+
+        db.set_log_settings(&LogSettings {
+            level: LogLevel::Debug,
+            retention_days: 7,
+        })
+        .unwrap();
+        let updated = db.get_log_settings().unwrap();
+        assert_eq!(updated.level, LogLevel::Debug);
+        assert_eq!(updated.retention_days, 7);
+    }
+
+    #[test]
+    fn logs_insert_list_and_clear() {
+        let db = Db::open_in_memory().unwrap();
+        db.insert_log(LogLevel::Info, "first").unwrap();
+        db.insert_log(LogLevel::Error, "second").unwrap();
+
+        let logs = db.list_logs(10).unwrap();
+        assert_eq!(logs.len(), 2);
+        // Most recent first.
+        assert_eq!(logs[0].message, "second");
+        assert_eq!(logs[0].level, LogLevel::Error);
+        assert_eq!(logs[1].message, "first");
+
+        db.clear_logs().unwrap();
+        assert!(db.list_logs(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn list_logs_respects_limit() {
+        let db = Db::open_in_memory().unwrap();
+        for i in 0..5 {
+            db.insert_log(LogLevel::Info, &format!("m{i}")).unwrap();
+        }
+        assert_eq!(db.list_logs(2).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn prune_logs_removes_entries_older_than_retention() {
+        let db = Db::open_in_memory().unwrap();
+        // One clearly-old entry and one recent entry.
+        db.insert_log_at("2000-01-01 00:00:00", LogLevel::Info, "ancient")
+            .unwrap();
+        db.insert_log(LogLevel::Info, "recent").unwrap();
+
+        db.prune_logs(3).unwrap();
+
+        let logs = db.list_logs(10).unwrap();
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].message, "recent");
+    }
+
+    #[test]
+    fn prune_logs_with_zero_retention_clears_all() {
+        let db = Db::open_in_memory().unwrap();
+        db.insert_log(LogLevel::Error, "boom").unwrap();
+        db.prune_logs(0).unwrap();
+        assert!(db.list_logs(10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn dev_settings_default_then_update() {
+        let db = Db::open_in_memory().unwrap();
+        // Migration seeds the keychain default.
+        assert_eq!(
+            db.get_dev_settings().unwrap().token_storage,
+            TokenStorage::Keychain
+        );
+
+        db.set_dev_settings(&DevSettings {
+            token_storage: TokenStorage::Database,
+        })
+        .unwrap();
+        assert_eq!(
+            db.get_dev_settings().unwrap().token_storage,
+            TokenStorage::Database
+        );
+    }
+
+    #[test]
+    fn db_tokens_store_get_update_and_delete() {
+        let db = Db::open_in_memory().unwrap();
+        assert!(db.get_db_token("a1").unwrap().is_none());
+
+        db.store_db_token("a1", "secret-1").unwrap();
+        assert_eq!(db.get_db_token("a1").unwrap().as_deref(), Some("secret-1"));
+
+        // The value persisted to disk must be ciphertext, never the plaintext.
+        let raw = db.raw_db_token("a1").unwrap().unwrap();
+        assert_ne!(raw, "secret-1");
+        assert!(!raw.contains("secret-1"));
+
+        // Upsert replaces the existing token.
+        db.store_db_token("a1", "secret-2").unwrap();
+        assert_eq!(db.get_db_token("a1").unwrap().as_deref(), Some("secret-2"));
+
+        db.delete_db_token("a1").unwrap();
+        assert!(db.get_db_token("a1").unwrap().is_none());
     }
 }

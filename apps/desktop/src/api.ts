@@ -1,5 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { GitHubAccount, Query, Match } from "@prbar/shared-types";
+import type {
+  GitHubAccount,
+  Query,
+  Match,
+  LogEntry,
+  LogSettings,
+  DevSettings,
+} from "@prbar/shared-types";
 
 /**
  * Thin typed wrapper around the Tauri command layer. All persistence
@@ -51,5 +58,27 @@ export const api = {
 
   openUrl(url: string): Promise<void> {
     return invoke("open_url", { url });
+  },
+
+  // Logs -------------------------------------------------------------------
+  listLogs(): Promise<LogEntry[]> {
+    return invoke("list_logs");
+  },
+  clearLogs(): Promise<void> {
+    return invoke("clear_logs");
+  },
+  getLogSettings(): Promise<LogSettings> {
+    return invoke("get_log_settings");
+  },
+  setLogSettings(settings: LogSettings): Promise<LogSettings> {
+    return invoke("set_log_settings", { settings });
+  },
+
+  // Developer settings -----------------------------------------------------
+  getDevSettings(): Promise<DevSettings> {
+    return invoke("get_dev_settings");
+  },
+  setDevSettings(settings: DevSettings): Promise<DevSettings> {
+    return invoke("set_dev_settings", { settings });
   },
 };

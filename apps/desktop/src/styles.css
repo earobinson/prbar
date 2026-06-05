@@ -58,6 +58,151 @@ body {
   margin-top: 1.5rem;
 }
 
+/* Sidebar layout */
+.settings-layout {
+  display: flex;
+  gap: 1.25rem;
+  margin-top: 1rem;
+  align-items: flex-start;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 0 0 160px;
+  position: sticky;
+  top: 1rem;
+}
+
+.sidebar-tab {
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 0.45rem 0.7rem;
+  border-radius: 6px;
+}
+
+.sidebar-tab:hover {
+  background: var(--hover);
+}
+
+.sidebar-tab.active {
+  background: var(--surface);
+  border-color: var(--border);
+  font-weight: 600;
+}
+
+.settings-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-content .section-header:first-child {
+  margin-top: 0;
+}
+
+/* Logs */
+.logs-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.logs-settings {
+  display: flex;
+  gap: 1rem;
+  margin: 0.75rem 0;
+  flex-wrap: wrap;
+}
+
+.logs-settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.log-list {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns: max-content max-content 1fr;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--row-border);
+}
+
+.log-time {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.log-level {
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.log-level-debug {
+  color: var(--muted);
+}
+
+.log-level-info {
+  color: var(--success);
+}
+
+.log-level-warning {
+  color: #9a6700;
+}
+
+.log-level-error {
+  color: var(--error);
+}
+
+.log-message {
+  word-break: break-word;
+}
+
+/* Development */
+.dev-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-top: 1rem;
+}
+
+.dev-fieldset legend {
+  font-weight: 600;
+  padding: 0 0.35rem;
+}
+
+.dev-option {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  padding: 0.5rem 0;
+}
+
+.dev-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.dev-option-label {
+  font-weight: 600;
+}
+
+.dev-option-hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 ul {
   list-style: none;
   padding: 0;

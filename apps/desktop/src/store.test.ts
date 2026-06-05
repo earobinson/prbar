@@ -7,9 +7,16 @@ vi.mock("./api", () => ({
     listQueries: vi.fn(),
     addAccount: vi.fn(),
     renameAccount: vi.fn(),
+    setAccountToken: vi.fn(),
     removeAccount: vi.fn(),
     saveQuery: vi.fn(),
     deleteQuery: vi.fn(),
+    listLogs: vi.fn(),
+    clearLogs: vi.fn(),
+    getLogSettings: vi.fn(),
+    setLogSettings: vi.fn(),
+    getDevSettings: vi.fn(),
+    setDevSettings: vi.fn(),
   },
 }));
 
@@ -37,11 +44,22 @@ const query: Query = {
   notifyOnUpdates: false,
 };
 
+const logEntry = {
+  id: 1,
+  timestamp: "2026-01-01 09:00:00",
+  level: "info" as const,
+  message: "hello",
+};
+
+const logSettings = { level: "info" as const, retentionDays: 3 };
+const devSettings = { tokenStorage: "keychain" as const };
+
 beforeEach(() => {
   vi.clearAllMocks();
   useAppStore.setState({
     accounts: [],
     queries: [],
+    logs: [],
     loading: false,
     error: null,
   });
@@ -49,9 +67,16 @@ beforeEach(() => {
   mockApi.listQueries.mockResolvedValue([query]);
   mockApi.addAccount.mockResolvedValue(account);
   mockApi.renameAccount.mockResolvedValue(undefined);
+  mockApi.setAccountToken.mockResolvedValue(undefined);
   mockApi.removeAccount.mockResolvedValue(undefined);
   mockApi.saveQuery.mockResolvedValue(query);
   mockApi.deleteQuery.mockResolvedValue(undefined);
+  mockApi.listLogs.mockResolvedValue([logEntry]);
+  mockApi.clearLogs.mockResolvedValue(undefined);
+  mockApi.getLogSettings.mockResolvedValue(logSettings);
+  mockApi.setLogSettings.mockResolvedValue(logSettings);
+  mockApi.getDevSettings.mockResolvedValue(devSettings);
+  mockApi.setDevSettings.mockResolvedValue(devSettings);
 });
 
 describe("useAppStore", () => {
@@ -60,6 +85,9 @@ describe("useAppStore", () => {
     const state = useAppStore.getState();
     expect(state.accounts).toEqual([account]);
     expect(state.queries).toEqual([query]);
+    expect(state.logs).toEqual([logEntry]);
+    expect(state.logSettings).toEqual(logSettings);
+    expect(state.devSettings).toEqual(devSettings);
     expect(state.loading).toBe(false);
     expect(state.error).toBeNull();
   });
@@ -113,5 +141,41 @@ describe("useAppStore", () => {
       ...query,
       enabled: false,
     });
+  });
+
+  it("setAccountToken delegates and reloads", async () => {
+    await useAppStore.getState().setAccountToken("a1", "tok");
+    expect(mockApi.setAccountToken).toHaveBeenCalledWith("a1", "tok");
+    expect(mockApi.listAccounts).toHaveBeenCalled();
+  });
+
+  it("loadLogs refreshes only the logs", async () => {
+    await useAppStore.getState().loadLogs();
+    expect(mockApi.listLogs).toHaveBeenCalled();
+    expect(useAppStore.getState().logs).toEqual([logEntry]);
+  });
+
+  it("saveLogSettings persists settings and reloads logs", async () => {
+    const next = { level: "debug" as const, retentionDays: 7 };
+    mockApi.setLogSettings.mockResolvedValue(next);
+    await useAppStore.getState().saveLogSettings(next);
+    expect(mockApi.setLogSettings).toHaveBeenCalledWith(next);
+    expect(mockApi.listLogs).toHaveBeenCalled();
+    expect(useAppStore.getState().logSettings).toEqual(next);
+  });
+
+  it("clearLogs empties the logs", async () => {
+    useAppStore.setState({ logs: [logEntry] });
+    await useAppStore.getState().clearLogs();
+    expect(mockApi.clearLogs).toHaveBeenCalled();
+    expect(useAppStore.getState().logs).toEqual([]);
+  });
+
+  it("saveDevSettings persists the storage backend", async () => {
+    const next = { tokenStorage: "database" as const };
+    mockApi.setDevSettings.mockResolvedValue(next);
+    await useAppStore.getState().saveDevSettings(next);
+    expect(mockApi.setDevSettings).toHaveBeenCalledWith(next);
+    expect(useAppStore.getState().devSettings).toEqual(next);
   });
 });

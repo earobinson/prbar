@@ -11,6 +11,10 @@ const actions = {
   saveQuery: vi.fn(),
   deleteQuery: vi.fn(),
   setQueryEnabled: vi.fn(),
+  loadLogs: vi.fn(),
+  saveLogSettings: vi.fn(),
+  clearLogs: vi.fn(),
+  saveDevSettings: vi.fn(),
 };
 
 const account: GitHubAccount = {
@@ -49,11 +53,26 @@ function makeState(overrides: Record<string, unknown> = {}) {
   return {
     accounts: [account],
     queries: [query],
+    logs: [
+      {
+        id: 1,
+        timestamp: "2026-01-01 09:00:00",
+        level: "info",
+        message: "PRBar started",
+      },
+    ],
+    logSettings: { level: "info", retentionDays: 3 },
+    devSettings: { tokenStorage: "keychain" },
     loading: false,
     error: null,
     ...actions,
     ...overrides,
   };
+}
+
+/** Switch the settings sidebar to the named tab. */
+function openTab(name: string) {
+  fireEvent.click(screen.getByRole("button", { name }));
 }
 
 beforeEach(() => {
@@ -63,10 +82,15 @@ beforeEach(() => {
 });
 
 describe("App", () => {
-  it("loads data on mount and renders accounts and queries", () => {
+  it("loads data on mount and renders accounts", () => {
     render(<App />);
     expect(actions.loadAll).toHaveBeenCalled();
     expect(screen.getByText("Work")).toBeInTheDocument();
+  });
+
+  it("shows queries on the Queries tab", () => {
+    render(<App />);
+    openTab("Queries");
     expect(screen.getByText("My Reviews")).toBeInTheDocument();
   });
 
@@ -173,18 +197,21 @@ describe("App", () => {
 
   it("deletes a query", () => {
     render(<App />);
+    openTab("Queries");
     fireEvent.click(screen.getByText("Delete"));
     expect(actions.deleteQuery).toHaveBeenCalledWith("q1");
   });
 
   it("toggles a query's enabled flag", () => {
     render(<App />);
+    openTab("Queries");
     fireEvent.click(screen.getByRole("checkbox"));
     expect(actions.setQueryEnabled).toHaveBeenCalledWith(query, false);
   });
 
   it("opens the create form and cancels back to the list", () => {
     render(<App />);
+    openTab("Queries");
     fireEvent.click(screen.getByText("Create Query"));
     expect(screen.getByText("Save")).toBeInTheDocument();
     fireEvent.click(screen.getByText("Cancel"));
@@ -193,6 +220,7 @@ describe("App", () => {
 
   it("creates a new query with a generated id", async () => {
     render(<App />);
+    openTab("Queries");
     fireEvent.click(screen.getByText("Create Query"));
     fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "New" },
@@ -210,6 +238,7 @@ describe("App", () => {
 
   it("edits an existing query preserving its id", async () => {
     render(<App />);
+    openTab("Queries");
     fireEvent.click(screen.getByText("Edit"));
     fireEvent.click(screen.getByText("Save"));
     await waitFor(() =>
@@ -221,6 +250,7 @@ describe("App", () => {
 
   it("duplicates a query into the form and saves a new copy", async () => {
     render(<App />);
+    openTab("Queries");
     fireEvent.click(screen.getByText("Duplicate"));
     expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe(
       "My Reviews (copy)",
@@ -231,5 +261,36 @@ describe("App", () => {
         expect.objectContaining({ id: "generated-id" }),
       ),
     );
+  });
+
+  it("shows logs and saves a changed log level", () => {
+    render(<App />);
+    openTab("Logs");
+    expect(screen.getByText("PRBar started")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Minimum level"), {
+      target: { value: "debug" },
+    });
+    expect(actions.saveLogSettings).toHaveBeenCalledWith({
+      level: "debug",
+      retentionDays: 3,
+    });
+  });
+
+  it("refreshes and clears logs", () => {
+    render(<App />);
+    openTab("Logs");
+    fireEvent.click(screen.getByText("Refresh"));
+    fireEvent.click(screen.getByText("Clear"));
+    expect(actions.loadLogs).toHaveBeenCalled();
+    expect(actions.clearLogs).toHaveBeenCalled();
+  });
+
+  it("toggles the token storage backend on the Development tab", () => {
+    render(<App />);
+    openTab("Development");
+    fireEvent.click(screen.getByLabelText(/Encrypted database/));
+    expect(actions.saveDevSettings).toHaveBeenCalledWith({
+      tokenStorage: "database",
+    });
   });
 });

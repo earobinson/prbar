@@ -57,3 +57,112 @@ pub struct CachedMatch {
     pub pull_request_id: i64,
     pub updated_at: String,
 }
+
+/// Severity of a log entry. Variants are ordered from least to most severe so
+/// that `Ord` can express "store everything at or above this level": with a
+/// minimum of `Info`, `Debug` (lower) is dropped while `Info`/`Warning`/`Error`
+/// (>= Info) are kept.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    Debug,
+    Info,
+    Warning,
+    Error,
+}
+
+impl LogLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LogLevel::Debug => "debug",
+            LogLevel::Info => "info",
+            LogLevel::Warning => "warning",
+            LogLevel::Error => "error",
+        }
+    }
+
+    /// Parse a stored level string back into a `LogLevel`.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "debug" => Some(LogLevel::Debug),
+            "info" => Some(LogLevel::Info),
+            "warning" => Some(LogLevel::Warning),
+            "error" => Some(LogLevel::Error),
+            _ => None,
+        }
+    }
+}
+
+/// A single stored log line.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogEntry {
+    pub id: i64,
+    pub timestamp: String,
+    pub level: LogLevel,
+    pub message: String,
+}
+
+/// User-configurable logging behaviour: the minimum level to persist and how
+/// many days of history to keep.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct LogSettings {
+    /// Minimum level to store. `Debug` keeps everything; `Error` keeps only
+    /// errors.
+    pub level: LogLevel,
+    #[serde(rename = "retentionDays")]
+    pub retention_days: i64,
+}
+
+impl Default for LogSettings {
+    fn default() -> Self {
+        LogSettings {
+            level: LogLevel::Info,
+            retention_days: 3,
+        }
+    }
+}
+
+/// Where account tokens are persisted. `Keychain` uses the OS credential store
+/// (most secure, but can prompt for the login password). `Database` stores the
+/// token in the app's SQLite file — convenient for development where repeated
+/// keychain prompts are disruptive, at the cost of weaker at-rest protection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TokenStorage {
+    Keychain,
+    Database,
+}
+
+impl TokenStorage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TokenStorage::Keychain => "keychain",
+            TokenStorage::Database => "database",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "keychain" => Some(TokenStorage::Keychain),
+            "database" => Some(TokenStorage::Database),
+            _ => None,
+        }
+    }
+}
+
+/// Developer-oriented settings.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct DevSettings {
+    #[serde(rename = "tokenStorage")]
+    pub token_storage: TokenStorage,
+}
+
+impl Default for DevSettings {
+    fn default() -> Self {
+        DevSettings {
+            token_storage: TokenStorage::Keychain,
+        }
+    }
+}

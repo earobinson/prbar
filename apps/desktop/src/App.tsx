@@ -5,6 +5,8 @@ import {
   AccountList,
   QueryForm,
   QueryList,
+  LogsPanel,
+  DevPanel,
   type AccountFormValues,
 } from "@prbar/ui-components";
 import { useAppStore } from "./store";
@@ -21,6 +23,15 @@ type AccountEditing =
   | { kind: "rename"; account: GitHubAccount }
   | { kind: "token"; account: GitHubAccount };
 
+type Tab = "accounts" | "queries" | "logs" | "development";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "accounts", label: "Accounts" },
+  { id: "queries", label: "Queries" },
+  { id: "logs", label: "Logs" },
+  { id: "development", label: "Development" },
+];
+
 /**
  * The Settings window. Normal operation is from the tray; this window is
  * opened on demand from the right-click menu's "Settings" action.
@@ -29,6 +40,9 @@ export function App() {
   const {
     accounts,
     queries,
+    logs,
+    logSettings,
+    devSettings,
     loading,
     error,
     loadAll,
@@ -39,8 +53,13 @@ export function App() {
     saveQuery,
     deleteQuery,
     setQueryEnabled,
+    loadLogs,
+    saveLogSettings,
+    clearLogs,
+    saveDevSettings,
   } = useAppStore();
 
+  const [tab, setTab] = useState<Tab>("accounts");
   const [editing, setEditing] = useState<Editing>({ kind: "none" });
   const [accountEditing, setAccountEditing] = useState<AccountEditing>({
     kind: "none",
@@ -111,59 +130,100 @@ export function App() {
       {error && <p className="error">{error}</p>}
       {loading && <p className="loading">Loading…</p>}
 
-      {accountEditing.kind === "none" ? (
-        <AccountList
-          accounts={accounts}
-          statuses={statuses}
-          onAdd={() => setAccountEditing({ kind: "new" })}
-          onRename={(account) => setAccountEditing({ kind: "rename", account })}
-          onUpdateToken={(account) =>
-            setAccountEditing({ kind: "token", account })
-          }
-          onRemove={(a) => removeAccount(a.id)}
-          onValidate={handleValidate}
-        />
-      ) : (
-        <AccountForm
-          title={
-            accountEditing.kind === "rename"
-              ? "Rename Account"
-              : accountEditing.kind === "token"
-                ? "Update Token"
-                : "Add Account"
-          }
-          requireToken={accountEditing.kind === "new"}
-          tokenOnly={accountEditing.kind === "token"}
-          initial={
-            accountEditing.kind === "rename"
-              ? {
-                  name: accountEditing.account.name,
-                  githubUsername: accountEditing.account.githubUsername,
-                }
-              : undefined
-          }
-          onSubmit={handleAccountSubmit}
-          onCancel={() => setAccountEditing({ kind: "none" })}
-        />
-      )}
+      <div className="settings-layout">
+        <nav className="sidebar" aria-label="Settings sections">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`sidebar-tab${tab === t.id ? " active" : ""}`}
+              aria-current={tab === t.id ? "page" : undefined}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
 
-      {editing.kind === "none" ? (
-        <QueryList
-          queries={queries}
-          onCreate={() => setEditing({ kind: "new" })}
-          onEdit={(query) => setEditing({ kind: "edit", query })}
-          onDuplicate={handleDuplicate}
-          onDelete={(query) => deleteQuery(query.id)}
-          onToggleEnabled={(query, enabled) => setQueryEnabled(query, enabled)}
-        />
-      ) : (
-        <QueryForm
-          accounts={accounts}
-          initial={editing.kind === "edit" ? editing.query : undefined}
-          onSubmit={handleSubmitQuery}
-          onCancel={() => setEditing({ kind: "none" })}
-        />
-      )}
+        <div className="settings-content">
+          {tab === "accounts" &&
+            (accountEditing.kind === "none" ? (
+              <AccountList
+                accounts={accounts}
+                statuses={statuses}
+                onAdd={() => setAccountEditing({ kind: "new" })}
+                onRename={(account) =>
+                  setAccountEditing({ kind: "rename", account })
+                }
+                onUpdateToken={(account) =>
+                  setAccountEditing({ kind: "token", account })
+                }
+                onRemove={(a) => removeAccount(a.id)}
+                onValidate={handleValidate}
+              />
+            ) : (
+              <AccountForm
+                title={
+                  accountEditing.kind === "rename"
+                    ? "Rename Account"
+                    : accountEditing.kind === "token"
+                      ? "Update Token"
+                      : "Add Account"
+                }
+                requireToken={accountEditing.kind === "new"}
+                tokenOnly={accountEditing.kind === "token"}
+                initial={
+                  accountEditing.kind === "rename"
+                    ? {
+                        name: accountEditing.account.name,
+                        githubUsername: accountEditing.account.githubUsername,
+                      }
+                    : undefined
+                }
+                onSubmit={handleAccountSubmit}
+                onCancel={() => setAccountEditing({ kind: "none" })}
+              />
+            ))}
+
+          {tab === "queries" &&
+            (editing.kind === "none" ? (
+              <QueryList
+                queries={queries}
+                onCreate={() => setEditing({ kind: "new" })}
+                onEdit={(query) => setEditing({ kind: "edit", query })}
+                onDuplicate={handleDuplicate}
+                onDelete={(query) => deleteQuery(query.id)}
+                onToggleEnabled={(query, enabled) =>
+                  setQueryEnabled(query, enabled)
+                }
+              />
+            ) : (
+              <QueryForm
+                accounts={accounts}
+                initial={editing.kind === "edit" ? editing.query : undefined}
+                onSubmit={handleSubmitQuery}
+                onCancel={() => setEditing({ kind: "none" })}
+              />
+            ))}
+
+          {tab === "logs" && (
+            <LogsPanel
+              logs={logs}
+              settings={logSettings}
+              onChangeSettings={saveLogSettings}
+              onRefresh={loadLogs}
+              onClear={clearLogs}
+            />
+          )}
+
+          {tab === "development" && (
+            <DevPanel
+              settings={devSettings}
+              onChangeSettings={saveDevSettings}
+            />
+          )}
+        </div>
+      </div>
     </main>
   );
 }
