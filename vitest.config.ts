@@ -3,18 +3,24 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     globals: true,
-    environment: "node",
-    include: ["packages/**/src/**/*.{test,spec}.ts"],
+    environment: "jsdom",
+    setupFiles: ["./vitest.setup.ts"],
+    include: [
+      "packages/**/src/**/*.{test,spec}.{ts,tsx}",
+      "apps/**/src/**/*.{test,spec}.{ts,tsx}",
+    ],
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "lcov"],
-      include: [
-        "packages/query-engine/src/**",
-        "packages/github-provider/src/**",
-        "packages/notification-engine/src/**",
-        "packages/provider-core/src/**",
+      include: ["packages/*/src/**", "apps/*/src/**"],
+      exclude: [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "**/*.d.ts",
+        "apps/desktop/src/main.tsx",
       ],
-      exclude: ["**/index.ts", "**/*.test.ts", "**/*.d.ts"],
       thresholds: {
         lines: 80,
         functions: 80,

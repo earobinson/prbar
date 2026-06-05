@@ -91,10 +91,17 @@ Tokens are written to the OS credential store and never persisted in SQLite.
 
 ## Testing
 
+`pnpm test` runs the full Vitest suite (engine packages **and** the React
+UI/desktop frontend) in a jsdom environment.
+
 ```bash
-pnpm coverage                             # TypeScript engines (80%+ target)
+pnpm test                                 # all TypeScript/React tests
+pnpm coverage                             # enforces 80%+ branch coverage
 cd apps/desktop/src-tauri && cargo test   # Rust backend
 ```
+
+Coverage thresholds (80% lines/branches/functions/statements) are enforced
+for every package and the desktop frontend via `vitest.config.ts`.
 
 ## Building
 
