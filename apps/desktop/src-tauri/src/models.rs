@@ -20,8 +20,8 @@ pub struct NewAccount {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Query {
     pub id: String,
-    #[serde(rename = "accountId")]
-    pub account_id: String,
+    #[serde(rename = "accountIds")]
+    pub account_ids: Vec<String>,
     pub name: String,
     #[serde(rename = "searchQuery")]
     pub search_query: String,
@@ -51,10 +51,13 @@ pub struct Match {
     pub updated_at: String,
 }
 
-/// A cached match row (identity + timestamp) used for diffing.
+/// A cached match row (identity + timestamp) used for diffing. Identity is the
+/// pull request URL, which is globally unique — unlike the PR *number*, which
+/// repeats across repositories and would collide when a query spans several
+/// repos or accounts.
 #[derive(Debug, Clone)]
 pub struct CachedMatch {
-    pub pull_request_id: i64,
+    pub url: String,
     pub updated_at: String,
 }
 

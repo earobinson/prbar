@@ -10,7 +10,7 @@ const accounts: GitHubAccount[] = [
 
 const existing: Query = {
   id: "q1",
-  accountId: "a1",
+  accountIds: ["a1"],
   name: "My Reviews",
   searchQuery: "is:pr review-requested:@me",
   enabled: true,
@@ -40,7 +40,7 @@ describe("QueryForm", () => {
     const payload = onSubmit.mock.calls[0][0];
     expect(payload.id).toBeUndefined();
     expect(payload.name).toBe("New Query");
-    expect(payload.accountId).toBe("a1");
+    expect(payload.accountIds).toEqual(["a1"]);
     expect(payload.pollIntervalSeconds).toBe(60);
   });
 
@@ -76,7 +76,7 @@ describe("QueryForm", () => {
     expect(onSubmit.mock.calls[0][0].pollIntervalSeconds).toBe(90);
   });
 
-  it("updates the selected account", () => {
+  it("adds and removes target accounts", () => {
     const onSubmit = vi.fn();
     render(
       <QueryForm accounts={accounts} onSubmit={onSubmit} onCancel={vi.fn()} />,
@@ -87,11 +87,27 @@ describe("QueryForm", () => {
     fireEvent.change(screen.getByLabelText("Search Query"), {
       target: { value: "is:pr" },
     });
-    fireEvent.change(screen.getByLabelText("GitHub Account"), {
-      target: { value: "a2" },
-    });
+    // "Work" (a1) is selected by default; add "Personal" (a2) as well.
+    fireEvent.click(screen.getByLabelText("Personal"));
     fireEvent.click(screen.getByText("Save"));
-    expect(onSubmit.mock.calls[0][0].accountId).toBe("a2");
+    expect(onSubmit.mock.calls[0][0].accountIds).toEqual(["a1", "a2"]);
+  });
+
+  it("can target a single account by deselecting the default", () => {
+    const onSubmit = vi.fn();
+    render(
+      <QueryForm accounts={accounts} onSubmit={onSubmit} onCancel={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "X" },
+    });
+    fireEvent.change(screen.getByLabelText("Search Query"), {
+      target: { value: "is:pr" },
+    });
+    fireEvent.click(screen.getByLabelText("Personal"));
+    fireEvent.click(screen.getByLabelText("Work"));
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSubmit.mock.calls[0][0].accountIds).toEqual(["a2"]);
   });
 
   it("toggles each boolean option", () => {
@@ -125,7 +141,7 @@ describe("QueryForm", () => {
     expect(onCancel).toHaveBeenCalledOnce();
   });
 
-  it("falls back to an empty account id when no accounts exist", () => {
+  it("starts with no target accounts when none exist", () => {
     const onSubmit = vi.fn();
     render(<QueryForm accounts={[]} onSubmit={onSubmit} onCancel={vi.fn()} />);
     fireEvent.change(screen.getByLabelText("Name"), {
@@ -135,6 +151,6 @@ describe("QueryForm", () => {
       target: { value: "is:pr" },
     });
     fireEvent.click(screen.getByText("Save"));
-    expect(onSubmit.mock.calls[0][0].accountId).toBe("");
+    expect(onSubmit.mock.calls[0][0].accountIds).toEqual([]);
   });
 });

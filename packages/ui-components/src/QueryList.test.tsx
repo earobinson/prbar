@@ -5,7 +5,7 @@ import { QueryList } from "./QueryList";
 
 const query: Query = {
   id: "q1",
-  accountId: "a1",
+  accountIds: ["a1"],
   name: "My Reviews",
   searchQuery: "is:pr review-requested:@me",
   enabled: true,

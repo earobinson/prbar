@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -67,6 +68,16 @@ impl Db {
               poll_interval_seconds INTEGER NOT NULL
             );
 
+            -- A query can target many accounts; this join table is the source
+            -- of truth. The legacy queries.account_id column is retained only
+            -- to satisfy its NOT NULL constraint on pre-existing databases and
+            -- mirrors the first targeted account.
+            CREATE TABLE IF NOT EXISTS query_accounts (
+              query_id TEXT NOT NULL,
+              account_id TEXT NOT NULL,
+              PRIMARY KEY (query_id, account_id)
+            );
+
             CREATE TABLE IF NOT EXISTS cached_matches (
               query_id TEXT NOT NULL,
               pull_request_id INTEGER NOT NULL,
@@ -74,7 +85,7 @@ impl Db {
               title TEXT NOT NULL DEFAULT '',
               url TEXT NOT NULL DEFAULT '',
               updated_at TEXT NOT NULL,
-              PRIMARY KEY(query_id, pull_request_id)
+              PRIMARY KEY(query_id, url)
             );
 
             CREATE TABLE IF NOT EXISTS logs (
@@ -109,6 +120,48 @@ impl Db {
               VALUES (1, 'keychain');
             ",
         )?;
+
+        // Pre-existing databases created cached_matches with a (query_id,
+        // pull_request_id) primary key, which collides when one query spans
+        // repositories/accounts that reuse PR numbers. cached_matches is a
+        // disposable cache, so rebuild it with the URL-based key when an old
+        // schema is detected (the next poll repopulates it).
+        let pk_cols: Vec<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT name FROM pragma_table_info('cached_matches')
+                 WHERE pk > 0 ORDER BY pk",
+            )?;
+            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        if pk_cols != ["query_id", "url"] {
+            conn.execute_batch(
+                "DROP TABLE IF EXISTS cached_matches;
+                 CREATE TABLE cached_matches (
+                   query_id TEXT NOT NULL,
+                   pull_request_id INTEGER NOT NULL,
+                   repository TEXT NOT NULL DEFAULT '',
+                   title TEXT NOT NULL DEFAULT '',
+                   url TEXT NOT NULL DEFAULT '',
+                   updated_at TEXT NOT NULL,
+                   PRIMARY KEY(query_id, url)
+                 );",
+            )?;
+        }
+
+        // One-time migration of single-account queries into query_accounts.
+        // Guarded by user_version so it never re-adds an account that was later
+        // removed through the UI.
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version < 1 {
+            conn.execute(
+                "INSERT OR IGNORE INTO query_accounts (query_id, account_id)
+                 SELECT id, account_id FROM queries WHERE account_id <> ''",
+                [],
+            )?;
+            conn.execute_batch("PRAGMA user_version = 1;")?;
+        }
+
         Ok(())
     }
 
@@ -139,9 +192,40 @@ impl Db {
     }
 
     pub fn delete_account(&self, id: &str) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM accounts WHERE id = ?1", params![id])?;
-        conn.execute("DELETE FROM queries WHERE account_id = ?1", params![id])?;
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM accounts WHERE id = ?1", params![id])?;
+        tx.execute("DELETE FROM tokens WHERE account_id = ?1", params![id])?;
+
+        // Find the queries that referenced this account before detaching it.
+        let affected: Vec<String> = {
+            let mut stmt =
+                tx.prepare("SELECT query_id FROM query_accounts WHERE account_id = ?1")?;
+            let rows = stmt.query_map(params![id], |row| row.get::<_, String>(0))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        tx.execute(
+            "DELETE FROM query_accounts WHERE account_id = ?1",
+            params![id],
+        )?;
+
+        // A query left with no accounts can no longer run; remove it and its
+        // cached matches. Only queries orphaned by *this* deletion are touched.
+        for query_id in affected {
+            let remaining: i64 = tx.query_row(
+                "SELECT COUNT(*) FROM query_accounts WHERE query_id = ?1",
+                params![query_id],
+                |row| row.get(0),
+            )?;
+            if remaining == 0 {
+                tx.execute(
+                    "DELETE FROM cached_matches WHERE query_id = ?1",
+                    params![query_id],
+                )?;
+                tx.execute("DELETE FROM queries WHERE id = ?1", params![query_id])?;
+            }
+        }
+        tx.commit()?;
         Ok(())
     }
 
@@ -179,8 +263,12 @@ impl Db {
     // Queries ----------------------------------------------------------------
 
     pub fn upsert_query(&self, query: &Query) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        // The legacy account_id column only exists to satisfy NOT NULL on old
+        // databases; mirror the first targeted account (or empty).
+        let legacy_account = query.account_ids.first().cloned().unwrap_or_default();
+        tx.execute(
             "INSERT INTO queries (
                 id, account_id, name, search_query, enabled, show_in_menu,
                 desktop_notifications, notify_on_new_matches, notify_on_updates,
@@ -198,7 +286,7 @@ impl Db {
                 poll_interval_seconds = excluded.poll_interval_seconds",
             params![
                 query.id,
-                query.account_id,
+                legacy_account,
                 query.name,
                 query.search_query,
                 query.enabled as i64,
@@ -209,12 +297,29 @@ impl Db {
                 query.poll_interval_seconds,
             ],
         )?;
+        // Replace the account associations with the supplied set.
+        tx.execute(
+            "DELETE FROM query_accounts WHERE query_id = ?1",
+            params![query.id],
+        )?;
+        for account_id in &query.account_ids {
+            tx.execute(
+                "INSERT OR IGNORE INTO query_accounts (query_id, account_id)
+                 VALUES (?1, ?2)",
+                params![query.id, account_id],
+            )?;
+        }
+        tx.commit()?;
         Ok(())
     }
 
     pub fn delete_query(&self, id: &str) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM queries WHERE id = ?1", params![id])?;
+        conn.execute(
+            "DELETE FROM query_accounts WHERE query_id = ?1",
+            params![id],
+        )?;
         conn.execute(
             "DELETE FROM cached_matches WHERE query_id = ?1",
             params![id],
@@ -224,29 +329,53 @@ impl Db {
 
     pub fn list_queries(&self) -> rusqlite::Result<Vec<Query>> {
         let conn = self.conn.lock().unwrap();
+
+        // Load account associations once, grouped by query (preserving insert
+        // order so the primary/first account stays first).
+        let mut account_ids: HashMap<String, Vec<String>> = HashMap::new();
+        {
+            let mut stmt = conn.prepare(
+                "SELECT query_id, account_id FROM query_accounts ORDER BY rowid",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows {
+                let (query_id, account_id) = row?;
+                account_ids.entry(query_id).or_default().push(account_id);
+            }
+        }
+
         let mut stmt = conn.prepare(
             "SELECT id, account_id, name, search_query, enabled, show_in_menu,
                     desktop_notifications, notify_on_new_matches,
                     notify_on_updates, poll_interval_seconds
              FROM queries ORDER BY name",
         )?;
-        let rows = stmt.query_map([], Self::map_query)?;
+        let rows = stmt.query_map([], |row| {
+            let id: String = row.get(0)?;
+            let legacy_account: String = row.get(1)?;
+            let ids = account_ids.get(&id).cloned().unwrap_or_else(|| {
+                if legacy_account.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![legacy_account]
+                }
+            });
+            Ok(Query {
+                id,
+                account_ids: ids,
+                name: row.get(2)?,
+                search_query: row.get(3)?,
+                enabled: row.get::<_, i64>(4)? != 0,
+                show_in_menu: row.get::<_, i64>(5)? != 0,
+                desktop_notifications: row.get::<_, i64>(6)? != 0,
+                notify_on_new_matches: row.get::<_, i64>(7)? != 0,
+                notify_on_updates: row.get::<_, i64>(8)? != 0,
+                poll_interval_seconds: row.get(9)?,
+            })
+        })?;
         rows.collect()
-    }
-
-    fn map_query(row: &rusqlite::Row<'_>) -> rusqlite::Result<Query> {
-        Ok(Query {
-            id: row.get(0)?,
-            account_id: row.get(1)?,
-            name: row.get(2)?,
-            search_query: row.get(3)?,
-            enabled: row.get::<_, i64>(4)? != 0,
-            show_in_menu: row.get::<_, i64>(5)? != 0,
-            desktop_notifications: row.get::<_, i64>(6)? != 0,
-            notify_on_new_matches: row.get::<_, i64>(7)? != 0,
-            notify_on_updates: row.get::<_, i64>(8)? != 0,
-            poll_interval_seconds: row.get(9)?,
-        })
     }
 
     // Cached matches ---------------------------------------------------------
@@ -254,11 +383,11 @@ impl Db {
     pub fn cached_matches(&self, query_id: &str) -> rusqlite::Result<Vec<CachedMatch>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT pull_request_id, updated_at FROM cached_matches WHERE query_id = ?1",
+            "SELECT url, updated_at FROM cached_matches WHERE query_id = ?1",
         )?;
         let rows = stmt.query_map(params![query_id], |row| {
             Ok(CachedMatch {
-                pull_request_id: row.get(0)?,
+                url: row.get(0)?,
                 updated_at: row.get(1)?,
             })
         })?;
@@ -279,7 +408,7 @@ impl Db {
         )?;
         for m in matches {
             tx.execute(
-                "INSERT INTO cached_matches
+                "INSERT OR REPLACE INTO cached_matches
                    (query_id, pull_request_id, repository, title, url, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![
@@ -532,10 +661,10 @@ mod tests {
         DevSettings, GitHubAccount, LogLevel, LogSettings, Match, Query, TokenStorage,
     };
 
-    fn sample_query(id: &str, account_id: &str) -> Query {
+    fn sample_query(id: &str, account_ids: &[&str]) -> Query {
         Query {
             id: id.to_string(),
-            account_id: account_id.to_string(),
+            account_ids: account_ids.iter().map(|s| s.to_string()).collect(),
             name: format!("Query {id}"),
             search_query: "is:pr state:open".to_string(),
             enabled: true,
@@ -588,24 +717,48 @@ mod tests {
             github_username: "octocat".into(),
         })
         .unwrap();
-        db.upsert_query(&sample_query("q1", "a1")).unwrap();
+        db.upsert_query(&sample_query("q1", &["a1"])).unwrap();
         db.delete_account("a1").unwrap();
+        assert!(db.list_queries().unwrap().is_empty());
+    }
+
+    #[test]
+    fn deleting_one_account_keeps_multi_account_query() {
+        let db = Db::open_in_memory().unwrap();
+        for id in ["a1", "a2"] {
+            db.insert_account(&GitHubAccount {
+                id: id.into(),
+                name: id.into(),
+                github_username: id.into(),
+            })
+            .unwrap();
+        }
+        db.upsert_query(&sample_query("q1", &["a1", "a2"])).unwrap();
+
+        db.delete_account("a1").unwrap();
+        let stored = db.list_queries().unwrap();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].account_ids, vec!["a2".to_string()]);
+
+        db.delete_account("a2").unwrap();
         assert!(db.list_queries().unwrap().is_empty());
     }
 
     #[test]
     fn queries_upsert_and_delete() {
         let db = Db::open_in_memory().unwrap();
-        let mut q = sample_query("q1", "a1");
+        let mut q = sample_query("q1", &["a1", "a2"]);
         db.upsert_query(&q).unwrap();
         q.name = "Renamed".into();
         q.enabled = false;
+        q.account_ids = vec!["a2".into()];
         db.upsert_query(&q).unwrap();
 
         let stored = db.list_queries().unwrap();
         assert_eq!(stored.len(), 1);
         assert_eq!(stored[0].name, "Renamed");
         assert!(!stored[0].enabled);
+        assert_eq!(stored[0].account_ids, vec!["a2".to_string()]);
 
         db.delete_query("q1").unwrap();
         assert!(db.list_queries().unwrap().is_empty());
@@ -614,7 +767,7 @@ mod tests {
     #[test]
     fn cached_matches_replace_and_read() {
         let db = Db::open_in_memory().unwrap();
-        db.upsert_query(&sample_query("q1", "a1")).unwrap();
+        db.upsert_query(&sample_query("q1", &["a1"])).unwrap();
         db.replace_matches(
             "q1",
             &[
@@ -633,16 +786,31 @@ mod tests {
     }
 
     #[test]
+    fn cached_matches_distinguish_same_pr_number_across_repos() {
+        let db = Db::open_in_memory().unwrap();
+        db.upsert_query(&sample_query("q1", &["a1"])).unwrap();
+        let mut a = sample_match("q1", 7, "t1");
+        a.repository = "org/alpha".into();
+        a.url = "https://example.com/org/alpha/7".into();
+        let mut b = sample_match("q1", 7, "t1");
+        b.repository = "org/beta".into();
+        b.url = "https://example.com/org/beta/7".into();
+        db.replace_matches("q1", &[a, b]).unwrap();
+        // Same PR number, different repos -> two distinct cached rows.
+        assert_eq!(db.cached_matches("q1").unwrap().len(), 2);
+    }
+
+    #[test]
     fn menu_matches_respects_visibility_flags() {
         let db = Db::open_in_memory().unwrap();
 
-        let mut shown = sample_query("q1", "a1");
+        let mut shown = sample_query("q1", &["a1"]);
         shown.show_in_menu = true;
         db.upsert_query(&shown).unwrap();
         db.replace_matches("q1", &[sample_match("q1", 1, "t1")])
             .unwrap();
 
-        let mut hidden = sample_query("q2", "a1");
+        let mut hidden = sample_query("q2", &["a1"]);
         hidden.show_in_menu = false;
         db.upsert_query(&hidden).unwrap();
         db.replace_matches("q2", &[sample_match("q2", 2, "t1")])

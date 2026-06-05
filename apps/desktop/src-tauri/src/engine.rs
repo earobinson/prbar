@@ -7,22 +7,25 @@ use crate::models::{CachedMatch, Match, Query};
 pub struct MatchDiff {
     pub added: Vec<Match>,
     pub updated: Vec<Match>,
-    pub removed_ids: Vec<i64>,
+    pub removed_urls: Vec<String>,
 }
 
 /// Compare cached matches with the freshly fetched matches for a query.
+/// Identity is the pull request URL (globally unique), so the same PR number
+/// appearing in different repositories or via different accounts never
+/// collides.
 pub fn diff_matches(previous: &[CachedMatch], current: &[Match]) -> MatchDiff {
-    let prior: HashMap<i64, &CachedMatch> = previous
+    let prior: HashMap<&str, &CachedMatch> = previous
         .iter()
-        .map(|m| (m.pull_request_id, m))
+        .map(|m| (m.url.as_str(), m))
         .collect();
 
-    let mut current_ids: HashSet<i64> = HashSet::new();
+    let mut current_urls: HashSet<&str> = HashSet::new();
     let mut diff = MatchDiff::default();
 
     for m in current {
-        current_ids.insert(m.pull_request_id);
-        match prior.get(&m.pull_request_id) {
+        current_urls.insert(m.url.as_str());
+        match prior.get(m.url.as_str()) {
             None => diff.added.push(m.clone()),
             Some(prev) if prev.updated_at != m.updated_at => diff.updated.push(m.clone()),
             Some(_) => {}
@@ -30,8 +33,8 @@ pub fn diff_matches(previous: &[CachedMatch], current: &[Match]) -> MatchDiff {
     }
 
     for m in previous {
-        if !current_ids.contains(&m.pull_request_id) {
-            diff.removed_ids.push(m.pull_request_id);
+        if !current_urls.contains(m.url.as_str()) {
+            diff.removed_urls.push(m.url.clone());
         }
     }
 
@@ -99,9 +102,9 @@ pub fn aggregate_count<'a>(sets: impl IntoIterator<Item = &'a [Match]>) -> usize
 mod tests {
     use super::*;
 
-    fn cached(id: i64, updated: &str) -> CachedMatch {
+    fn cached(url: &str, updated: &str) -> CachedMatch {
         CachedMatch {
-            pull_request_id: id,
+            url: url.to_string(),
             updated_at: updated.to_string(),
         }
     }
@@ -120,7 +123,7 @@ mod tests {
     fn query() -> Query {
         Query {
             id: "q1".into(),
-            account_id: "a1".into(),
+            account_ids: vec!["a1".into()],
             name: "Review Requested".into(),
             search_query: "is:pr".into(),
             enabled: true,
@@ -134,7 +137,11 @@ mod tests {
 
     #[test]
     fn diff_classifies_added_updated_removed() {
-        let previous = vec![cached(1, "t1"), cached(2, "t1"), cached(3, "t1")];
+        let previous = vec![
+            cached("https://example.com/1", "t1"),
+            cached("https://example.com/2", "t1"),
+            cached("https://example.com/3", "t1"),
+        ];
         let current = vec![
             m(1, "t1", "o/r"),
             m(2, "t2", "o/r"),
@@ -145,7 +152,37 @@ mod tests {
         assert_eq!(diff.added[0].pull_request_id, 4);
         assert_eq!(diff.updated.len(), 1);
         assert_eq!(diff.updated[0].pull_request_id, 2);
-        assert_eq!(diff.removed_ids, vec![3]);
+        assert_eq!(diff.removed_urls, vec!["https://example.com/3".to_string()]);
+    }
+
+    #[test]
+    fn diff_distinguishes_same_pr_number_in_different_repos() {
+        // Two different repositories each have PR #1: identical pull_request_id
+        // but distinct URLs. Both must be treated as separate matches instead
+        // of one shadowing the other (the multi-repo/multi-account case).
+        let previous = vec![cached("https://github.com/o/a/pull/1", "t1")];
+        let current = vec![
+            Match {
+                query_id: "q1".into(),
+                pull_request_id: 1,
+                repository: "o/a".into(),
+                title: "A".into(),
+                url: "https://github.com/o/a/pull/1".into(),
+                updated_at: "t1".into(),
+            },
+            Match {
+                query_id: "q1".into(),
+                pull_request_id: 1,
+                repository: "o/b".into(),
+                title: "B".into(),
+                url: "https://github.com/o/b/pull/1".into(),
+                updated_at: "t1".into(),
+            },
+        ];
+        let diff = diff_matches(&previous, &current);
+        assert_eq!(diff.added.len(), 1);
+        assert_eq!(diff.added[0].repository, "o/b");
+        assert!(diff.removed_urls.is_empty());
     }
 
     #[test]
@@ -153,7 +190,7 @@ mod tests {
         let diff = MatchDiff {
             added: vec![m(1, "t1", "o/r")],
             updated: vec![m(2, "t2", "o/r")],
-            removed_ids: vec![],
+            removed_urls: vec![],
         };
 
         let mut q = query();
@@ -171,7 +208,7 @@ mod tests {
         let diff = MatchDiff {
             added: vec![m(1, "t1", "myorg/webapp")],
             updated: vec![],
-            removed_ids: vec![],
+            removed_urls: vec![],
         };
         let n = &notifications_for(&query(), &diff)[0];
         assert_eq!(n.title, "Review Requested");

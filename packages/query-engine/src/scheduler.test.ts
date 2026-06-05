@@ -6,7 +6,7 @@ import { PollScheduler, runPollCycle } from "./scheduler";
 function makeQuery(overrides: Partial<Query> = {}): Query {
   return {
     id: "q1",
-    accountId: "a1",
+    accountIds: ["a1"],
     name: "My Reviews",
     searchQuery: "is:pr review-requested:@me",
     enabled: true,

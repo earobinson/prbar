@@ -20,9 +20,9 @@ export interface QueryFormProps {
   onCancel: () => void;
 }
 
-function defaultQuery(accountId: string): Omit<Query, "id"> {
+function defaultQuery(accountIds: string[]): Omit<Query, "id"> {
   return {
-    accountId,
+    accountIds,
     name: "",
     searchQuery: "",
     enabled: true,
@@ -45,7 +45,7 @@ export function QueryForm({
   onCancel,
 }: QueryFormProps) {
   const [draft, setDraft] = useState<Omit<Query, "id">>(
-    initial ?? defaultQuery(accounts[0]?.id ?? ""),
+    initial ?? defaultQuery(accounts[0]?.id ? [accounts[0].id] : []),
   );
 
   function update<K extends keyof Omit<Query, "id">>(
@@ -53,6 +53,15 @@ export function QueryForm({
     value: Omit<Query, "id">[K],
   ) {
     setDraft((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function toggleAccount(accountId: string, checked: boolean) {
+    setDraft((prev) => {
+      const next = checked
+        ? [...prev.accountIds, accountId]
+        : prev.accountIds.filter((id) => id !== accountId);
+      return { ...prev, accountIds: next };
+    });
   }
 
   function handleSubmit(event: React.FormEvent) {
@@ -76,19 +85,23 @@ export function QueryForm({
         />
       </label>
 
-      <label>
-        GitHub Account
-        <select
-          value={draft.accountId}
-          onChange={(e) => update("accountId", e.target.value)}
-        >
-          {accounts.map((account) => (
-            <option key={account.id} value={account.id}>
+      <fieldset className="account-select">
+        <legend>GitHub Accounts</legend>
+        {accounts.length === 0 ? (
+          <p className="hint">Add an account first.</p>
+        ) : (
+          accounts.map((account) => (
+            <label key={account.id} className="checkbox">
+              <input
+                type="checkbox"
+                checked={draft.accountIds.includes(account.id)}
+                onChange={(e) => toggleAccount(account.id, e.target.checked)}
+              />
               {account.name}
-            </option>
-          ))}
-        </select>
-      </label>
+            </label>
+          ))
+        )}
+      </fieldset>
 
       <label>
         Search Query

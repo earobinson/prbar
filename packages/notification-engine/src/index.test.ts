@@ -6,7 +6,7 @@ import { generateNotifications } from "./index";
 function makeQuery(overrides: Partial<Query> = {}): Query {
   return {
     id: "q1",
-    accountId: "a1",
+    accountIds: ["a1"],
     name: "Review Requested",
     searchQuery: "is:pr review-requested:@me",
     enabled: true,

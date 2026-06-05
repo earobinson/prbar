@@ -25,7 +25,7 @@ const account: GitHubAccount = {
 
 const query: Query = {
   id: "q1",
-  accountId: "a1",
+  accountIds: ["a1"],
   name: "My Reviews",
   searchQuery: "is:pr",
   enabled: true,

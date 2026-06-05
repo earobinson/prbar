@@ -9,7 +9,7 @@ mod poller;
 mod secrets;
 mod tray;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use db::Db;
 use tauri::Manager;
@@ -17,6 +17,10 @@ use tauri::Manager;
 /// Shared application state available to all Tauri commands.
 pub struct AppState {
     pub db: Arc<Db>,
+    /// Signature of the content currently rendered in the tray menu. Used to
+    /// avoid rebuilding (and thereby dismissing) the menu on polls that don't
+    /// change what the user sees. See `tray::update_indicator`.
+    pub menu_signature: Mutex<Option<String>>,
 }
 
 /// Show or hide the macOS Dock icon. PRBar runs as an accessory (menu bar
@@ -77,7 +81,10 @@ pub fn run() {
             let _ = db.prune_logs(retention);
             logging::info("PRBar started");
 
-            app.manage(AppState { db: db.clone() });
+            app.manage(AppState {
+                db: db.clone(),
+                menu_signature: Mutex::new(None),
+            });
 
             tray::build_tray(app.handle())?;
             poller::spawn(app.handle().clone(), db);

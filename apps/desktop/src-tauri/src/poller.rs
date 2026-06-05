@@ -101,29 +101,78 @@ fn poll_query(app: &AppHandle, db: &Db, query: &Query) -> Result<(), String> {
     Ok(())
 }
 
-/// Fetch a query's matches, refresh the cache, and return the diff. Kept free
-/// of any `AppHandle`/tray/notification concerns so it is unit-testable and so
-/// every failure mode yields an actionable message instead of a silent no-op.
+/// Fetch a query's matches across all of its accounts, refresh the cache, and
+/// return the diff. Kept free of any `AppHandle`/tray/notification concerns so
+/// it is unit-testable and so every failure mode yields an actionable message
+/// instead of a silent no-op.
+///
+/// Each account is fetched independently. A per-account failure is "soft": it is
+/// recorded but does not abort the others, so one revoked token can't hide PRs
+/// from the remaining accounts. A hard error is only returned when *every*
+/// account failed (or the query targets no accounts), preserving the behaviour
+/// of surfacing *why* nothing appeared.
 fn sync_query(db: &Db, query: &Query) -> Result<(Vec<Match>, MatchDiff), String> {
-    let token = secrets::get_token(db, &query.account_id).map_err(|e| {
-        format!(
-            "{}: no token found ({e}). Open Settings → Accounts and use \"Update Token\".",
+    if query.account_ids.is_empty() {
+        return Err(format!(
+            "{}: no accounts selected. Open Settings → Queries and choose at least one account.",
             query.name
-        )
-    })?;
+        ));
+    }
 
-    let client = GitHubClient::new(token);
-    let matches = client
-        .search_pull_requests(&query.id, &query.search_query)
-        .map_err(|e| format!("{}: GitHub search failed: {e}", query.name))?;
+    let mut aggregated: Vec<Match> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut errors: Vec<String> = Vec::new();
+    let mut any_succeeded = false;
+
+    for account_id in &query.account_ids {
+        let token = match secrets::get_token(db, account_id) {
+            Ok(token) => token,
+            Err(e) => {
+                errors.push(format!(
+                    "{}: no token found for account ({e}). Open Settings → Accounts and use \"Update Token\".",
+                    query.name
+                ));
+                continue;
+            }
+        };
+
+        let client = GitHubClient::new(token);
+        match client.search_pull_requests(&query.id, &query.search_query) {
+            Ok(matches) => {
+                any_succeeded = true;
+                for m in matches {
+                    // The same PR can be returned for multiple accounts; the URL
+                    // uniquely identifies it, so dedupe on it.
+                    if seen.insert(m.url.clone()) {
+                        aggregated.push(m);
+                    }
+                }
+            }
+            Err(e) => {
+                errors.push(format!("{}: GitHub search failed: {e}", query.name));
+            }
+        }
+    }
+
+    // Every account failed: surface the combined reason rather than caching an
+    // empty result that would look like "no PRs".
+    if !any_succeeded {
+        return Err(errors.join("; "));
+    }
+
+    // Some accounts succeeded but others failed: keep going (we still have
+    // partial results) but record the failures in the log.
+    for err in &errors {
+        logging::warning(err.clone());
+    }
 
     let previous = db.cached_matches(&query.id).unwrap_or_default();
-    let diff = diff_matches(&previous, &matches);
+    let diff = diff_matches(&previous, &aggregated);
 
-    db.replace_matches(&query.id, &matches)
+    db.replace_matches(&query.id, &aggregated)
         .map_err(|e| format!("{}: failed to store matches: {e}", query.name))?;
 
-    Ok((matches, diff))
+    Ok((aggregated, diff))
 }
 
 #[cfg(test)]
@@ -134,7 +183,7 @@ mod tests {
     fn enabled_query(account_id: &str) -> Query {
         Query {
             id: "q-test".to_string(),
-            account_id: account_id.to_string(),
+            account_ids: vec![account_id.to_string()],
             name: "Review Requests".to_string(),
             search_query: "is:pr review-requested:@me".to_string(),
             enabled: true,
@@ -157,5 +206,20 @@ mod tests {
 
         assert!(err.contains("Review Requests"), "names the query: {err}");
         assert!(err.contains("Update Token"), "tells the user how to fix: {err}");
+    }
+
+    #[test]
+    fn sync_query_with_no_accounts_is_actionable() {
+        let db = Db::open_in_memory().unwrap();
+        let mut query = enabled_query("ignored");
+        query.account_ids.clear();
+
+        let err = sync_query(&db, &query).expect_err("no accounts should error");
+
+        assert!(err.contains("Review Requests"), "names the query: {err}");
+        assert!(
+            err.contains("no accounts selected"),
+            "explains the problem: {err}"
+        );
     }
 }

@@ -10,11 +10,12 @@ export interface GitHubAccount {
 }
 
 /**
- * A saved search query. A query belongs to exactly one account.
+ * A saved search query. A query targets one or more accounts; its matches are
+ * the union of running its `searchQuery` against each account.
  */
 export interface Query {
   id: string;
-  accountId: string;
+  accountIds: string[];
 
   name: string;
   searchQuery: string;
