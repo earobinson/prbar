@@ -115,8 +115,23 @@ for every package and the desktop frontend via `vitest.config.ts`.
 
 ## Building
 
+Build release binaries with the workspace script:
+
 ```bash
-pnpm tauri build
+pnpm build:release
+```
+
+This command compiles the desktop app and creates platform-specific installers
+and bundles under:
+
+```text
+apps/desktop/src-tauri/target/release/bundle/
+```
+
+You can pass additional Tauri build flags through the pnpm script. For example:
+
+```bash
+pnpm build:release -- --bundles dmg
 ```
 
 Release artifacts for macOS (Apple Silicon & Intel), Windows x64, and Linux x64
