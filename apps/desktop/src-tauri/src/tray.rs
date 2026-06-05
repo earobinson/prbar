@@ -3,7 +3,6 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Wry};
 use tauri_plugin_opener::OpenerExt;
 
-use crate::db::Db;
 use crate::AppState;
 
 const TRAY_ID: &str = "prbar-tray";
@@ -25,21 +24,34 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 }
 
 /// Rebuild the menu and refresh the indicator (count) on the tray.
-pub fn update_indicator(app: &AppHandle, db: &Db) {
-    let count = db.menu_matches().map(|m| m.len()).unwrap_or(0);
+///
+/// The tray icon and menu are backed by AppKit (`NSStatusItem`/`NSMenu`) on
+/// macOS, which may only be mutated on the main thread. Polling runs on
+/// background threads, so the actual UI update is marshalled back onto the
+/// main thread; otherwise the fetched matches are stored but never rendered
+/// (the symptom: "I click refresh and nothing shows up").
+pub fn update_indicator(app: &AppHandle) {
+    let app = app.clone();
+    let _ = app.clone().run_on_main_thread(move || {
+        let count = app
+            .try_state::<AppState>()
+            .and_then(|state| state.db.menu_matches().ok())
+            .map(|m| m.len())
+            .unwrap_or(0);
 
-    if let Some(tray) = app.tray_by_id(TRAY_ID) {
-        // Title acts as the badge/indicator where supported.
-        let _ = tray.set_title(Some(if count == 0 {
-            String::new()
-        } else {
-            count.to_string()
-        }));
-        let _ = tray.set_tooltip(Some(format!("PRBar — {count} matching")));
-        if let Ok(menu) = build_menu(app) {
-            let _ = tray.set_menu(Some(menu));
+        if let Some(tray) = app.tray_by_id(TRAY_ID) {
+            // Title acts as the badge/indicator where supported.
+            let _ = tray.set_title(Some(if count == 0 {
+                String::new()
+            } else {
+                count.to_string()
+            }));
+            let _ = tray.set_tooltip(Some(format!("PRBar — {count} matching")));
+            if let Ok(menu) = build_menu(&app) {
+                let _ = tray.set_menu(Some(menu));
+            }
         }
-    }
+    });
 }
 
 /// Construct the tray menu: a list of matching pull requests followed by

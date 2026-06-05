@@ -103,11 +103,19 @@ pub fn list_matches(state: State<'_, AppState>) -> Result<Vec<Match>, String> {
 #[tauri::command]
 pub fn refresh_now(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     // Poll on a dedicated thread so the blocking GitHub client does not run
-    // inside the Tauri async runtime context.
+    // inside the Tauri async runtime context. Per-query failures are surfaced
+    // so the user sees *why* nothing appeared (e.g. a missing token) instead
+    // of an empty list with no explanation.
     let db = state.db.clone();
-    std::thread::spawn(move || poller::poll_all(&app, &db))
+    let errors = std::thread::spawn(move || poller::poll_all(&app, &db))
         .join()
-        .map_err(|_| "refresh thread panicked".to_string())
+        .map_err(|_| "refresh thread panicked".to_string())?;
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("\n"))
+    }
 }
 
 #[tauri::command]
