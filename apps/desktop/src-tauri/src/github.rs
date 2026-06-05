@@ -192,8 +192,8 @@ impl GitHubClient {
             .collect())
     }
 
-    /// Validate the token by calling `GET /user`, which works for both
-    /// classic and fine-grained tokens and requires no permissions.
+    /// Validate the token by calling `GET /user`, which works for any
+    /// fine-grained token and requires no permissions.
     ///
     /// Returns `Ok(true)` on success, `Ok(false)` when GitHub explicitly
     /// rejects the credentials (401/403), and `Err` for any other failure

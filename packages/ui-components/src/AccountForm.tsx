@@ -101,7 +101,7 @@ export function AccountForm({
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            placeholder="Classic token with the 'repo' scope"
+            placeholder="Fine-grained token with Pull requests: Read access"
             required
             autoComplete="off"
             {...NO_AUTO_FIX}
@@ -111,19 +111,20 @@ export function AccountForm({
       {showToken && (
         <a
           className="token-help"
-          href="https://github.com/settings/tokens/new?description=PRBar&scopes=repo,read:org"
+          href="https://github.com/settings/personal-access-tokens/new"
           target="_blank"
           rel="noreferrer"
         >
-          Create a classic token (repo scope) →
+          Create a fine-grained token →
         </a>
       )}
       {showToken && (
         <p className="token-hint">
-          Use a <strong>classic</strong> token with the <code>repo</code> scope.
-          Fine-grained tokens only see repositories you grant them, so queries
-          like <code>review-requested:@me</code> miss pull requests in other
-          organizations.
+          Use a <strong>fine-grained</strong> personal access token with{" "}
+          <code>Pull requests</code> set to <code>Read</code>. Grant it access to
+          every organization and repository whose pull requests you want to
+          track, otherwise queries like <code>review-requested:@me</code> miss
+          pull requests you can't see.
         </p>
       )}
 

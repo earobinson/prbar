@@ -77,16 +77,17 @@ describe("AccountForm", () => {
     });
   });
 
-  it("links to a classic token with the repo scope", () => {
+  it("links to a fine-grained token", () => {
     render(
       <AccountForm title="Add Account" onSubmit={vi.fn()} onCancel={vi.fn()} />,
     );
     const link = screen.getByRole("link", {
-      name: /classic token/i,
+      name: /fine-grained token/i,
     }) as HTMLAnchorElement;
-    expect(link.href).toContain("github.com/settings/tokens/new");
-    expect(link.href).toContain("scopes=repo");
-    // Explains why fine-grained tokens miss cross-org review requests.
+    expect(link.href).toContain(
+      "github.com/settings/personal-access-tokens/new",
+    );
+    // Explains why a too-narrowly-scoped token misses cross-org review requests.
     expect(screen.getByText(/review-requested:@me/)).toBeInTheDocument();
   });
 
