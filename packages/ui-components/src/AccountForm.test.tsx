@@ -56,4 +56,27 @@ describe("AccountForm", () => {
     fireEvent.click(screen.getByText("Cancel"));
     expect(onCancel).toHaveBeenCalled();
   });
+
+  it("shows only the token field in tokenOnly mode", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AccountForm
+        title="Update Token"
+        tokenOnly
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.queryByLabelText("Name")).toBeNull();
+    expect(screen.queryByLabelText("GitHub Username")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Personal Access Token"), {
+      target: { value: " new-token " },
+    });
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: "",
+      githubUsername: "",
+      token: "new-token",
+    });
+  });
 });

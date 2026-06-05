@@ -18,7 +18,8 @@ type Editing =
 type AccountEditing =
   | { kind: "none" }
   | { kind: "new" }
-  | { kind: "rename"; account: GitHubAccount };
+  | { kind: "rename"; account: GitHubAccount }
+  | { kind: "token"; account: GitHubAccount };
 
 /**
  * The Settings window. Normal operation is from the tray; this window is
@@ -33,6 +34,7 @@ export function App() {
     loadAll,
     addAccount,
     renameAccount,
+    setAccountToken,
     removeAccount,
     saveQuery,
     deleteQuery,
@@ -50,11 +52,18 @@ export function App() {
   }, [loadAll]);
 
   async function handleAccountSubmit(values: AccountFormValues) {
-    if (!values.name || !values.githubUsername) return;
     if (accountEditing.kind === "rename") {
+      if (!values.name) return;
       await renameAccount(accountEditing.account.id, values.name);
-    } else {
+    } else if (accountEditing.kind === "token") {
       if (!values.token) return;
+      await setAccountToken(accountEditing.account.id, values.token);
+      setStatuses((prev) => ({
+        ...prev,
+        [accountEditing.account.id]: "Token saved",
+      }));
+    } else {
+      if (!values.name || !values.githubUsername || !values.token) return;
       await addAccount(
         { name: values.name, githubUsername: values.githubUsername },
         values.token,
@@ -108,15 +117,23 @@ export function App() {
           statuses={statuses}
           onAdd={() => setAccountEditing({ kind: "new" })}
           onRename={(account) => setAccountEditing({ kind: "rename", account })}
+          onUpdateToken={(account) =>
+            setAccountEditing({ kind: "token", account })
+          }
           onRemove={(a) => removeAccount(a.id)}
           onValidate={handleValidate}
         />
       ) : (
         <AccountForm
           title={
-            accountEditing.kind === "rename" ? "Rename Account" : "Add Account"
+            accountEditing.kind === "rename"
+              ? "Rename Account"
+              : accountEditing.kind === "token"
+                ? "Update Token"
+                : "Add Account"
           }
           requireToken={accountEditing.kind === "new"}
+          tokenOnly={accountEditing.kind === "token"}
           initial={
             accountEditing.kind === "rename"
               ? {

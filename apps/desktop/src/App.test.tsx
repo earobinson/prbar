@@ -6,6 +6,7 @@ const actions = {
   loadAll: vi.fn(),
   addAccount: vi.fn(),
   renameAccount: vi.fn(),
+  setAccountToken: vi.fn(),
   removeAccount: vi.fn(),
   saveQuery: vi.fn(),
   deleteQuery: vi.fn(),
@@ -132,6 +133,24 @@ describe("App", () => {
     fireEvent.click(screen.getByText("Validate Token"));
     await waitFor(() =>
       expect(screen.getByText("Token is invalid")).toBeInTheDocument(),
+    );
+  });
+
+  it("updates the token for an existing account", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByText("Update Token"));
+    // Only the token field is shown in token-only mode.
+    expect(screen.queryByLabelText("Name")).toBeNull();
+    expect(screen.queryByLabelText("GitHub Username")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Personal Access Token"), {
+      target: { value: "fresh-token" },
+    });
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() =>
+      expect(actions.setAccountToken).toHaveBeenCalledWith("a1", "fresh-token"),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("Token saved")).toBeInTheDocument(),
     );
   });
 

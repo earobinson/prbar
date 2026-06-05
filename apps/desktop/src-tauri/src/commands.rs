@@ -39,6 +39,21 @@ pub fn rename_account(
     state.db.rename_account(&id, &name).map_err(to_str)
 }
 
+/// Store (or replace) the token for an existing account. Used to repair
+/// accounts whose token is missing from the keychain without recreating the
+/// account (which would orphan its queries).
+#[tauri::command]
+pub fn set_account_token(
+    state: State<'_, AppState>,
+    id: String,
+    token: String,
+) -> Result<(), String> {
+    if state.db.get_account(&id).map_err(to_str)?.is_none() {
+        return Err("account not found".to_string());
+    }
+    secrets::store_token(&id, &token).map_err(to_str)
+}
+
 #[tauri::command]
 pub fn remove_account(state: State<'_, AppState>, id: String) -> Result<(), String> {
     secrets::delete_token(&id).map_err(to_str)?;

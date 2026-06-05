@@ -20,6 +20,9 @@ export const api = {
   renameAccount(id: string, name: string): Promise<void> {
     return invoke("rename_account", { id, name });
   },
+  setAccountToken(id: string, token: string): Promise<void> {
+    return invoke("set_account_token", { id, token });
+  },
   removeAccount(id: string): Promise<void> {
     return invoke("remove_account", { id });
   },

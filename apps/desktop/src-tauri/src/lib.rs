@@ -80,6 +80,7 @@ pub fn run() {
             commands::list_accounts,
             commands::add_account,
             commands::rename_account,
+            commands::set_account_token,
             commands::remove_account,
             commands::validate_account,
             commands::list_queries,

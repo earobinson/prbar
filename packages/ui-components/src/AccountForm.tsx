@@ -12,6 +12,8 @@ export interface AccountFormProps {
   initial?: { name: string; githubUsername: string };
   /** Whether the personal access token field is shown and required. */
   requireToken?: boolean;
+  /** When true, only the token field is shown (repair an existing account). */
+  tokenOnly?: boolean;
   onSubmit: (values: AccountFormValues) => void;
   onCancel: () => void;
 }
@@ -24,6 +26,7 @@ export function AccountForm({
   title,
   initial,
   requireToken = true,
+  tokenOnly = false,
   onSubmit,
   onCancel,
 }: AccountFormProps) {
@@ -32,6 +35,7 @@ export function AccountForm({
     initial?.githubUsername ?? "",
   );
   const [token, setToken] = useState("");
+  const showToken = requireToken || tokenOnly;
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -46,27 +50,31 @@ export function AccountForm({
     <form className="account-form" onSubmit={handleSubmit}>
       <h3>{title}</h3>
 
-      <label>
-        Name
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Work GitHub"
-          required
-        />
-      </label>
+      {!tokenOnly && (
+        <label>
+          Name
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Work GitHub"
+            required
+          />
+        </label>
+      )}
 
-      <label>
-        GitHub Username
-        <input
-          value={githubUsername}
-          onChange={(e) => setGithubUsername(e.target.value)}
-          placeholder="octocat"
-          required
-        />
-      </label>
+      {!tokenOnly && (
+        <label>
+          GitHub Username
+          <input
+            value={githubUsername}
+            onChange={(e) => setGithubUsername(e.target.value)}
+            placeholder="octocat"
+            required
+          />
+        </label>
+      )}
 
-      {requireToken && (
+      {showToken && (
         <label>
           Personal Access Token
           <input
@@ -79,7 +87,7 @@ export function AccountForm({
           />
         </label>
       )}
-      {requireToken && (
+      {showToken && (
         <a
           className="token-help"
           href="https://github.com/settings/personal-access-tokens/new"

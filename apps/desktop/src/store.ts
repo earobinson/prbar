@@ -14,6 +14,7 @@ interface AppState {
     token: string,
   ) => Promise<void>;
   renameAccount: (id: string, name: string) => Promise<void>;
+  setAccountToken: (id: string, token: string) => Promise<void>;
   removeAccount: (id: string) => Promise<void>;
   saveQuery: (query: Query) => Promise<void>;
   deleteQuery: (id: string) => Promise<void>;
@@ -46,6 +47,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async renameAccount(id, name) {
     await api.renameAccount(id, name);
+    await get().loadAll();
+  },
+
+  async setAccountToken(id, token) {
+    await api.setAccountToken(id, token);
     await get().loadAll();
   },
 

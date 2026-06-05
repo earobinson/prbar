@@ -6,6 +6,7 @@ export interface AccountListProps {
   onRename: (account: GitHubAccount) => void;
   onRemove: (account: GitHubAccount) => void;
   onValidate: (account: GitHubAccount) => void;
+  onUpdateToken: (account: GitHubAccount) => void;
   /** Per-account validation status messages, keyed by account id. */
   statuses?: Record<string, string>;
 }
@@ -20,6 +21,7 @@ export function AccountList({
   onRename,
   onRemove,
   onValidate,
+  onUpdateToken,
   statuses = {},
 }: AccountListProps) {
   return (
@@ -50,6 +52,9 @@ export function AccountList({
               <div className="account-actions">
                 <button type="button" onClick={() => onValidate(account)}>
                   Validate Token
+                </button>
+                <button type="button" onClick={() => onUpdateToken(account)}>
+                  Update Token
                 </button>
                 <button type="button" onClick={() => onRename(account)}>
                   Rename
