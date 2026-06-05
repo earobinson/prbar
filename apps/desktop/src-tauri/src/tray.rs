@@ -1,3 +1,4 @@
+use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Wry};
@@ -7,12 +8,19 @@ use crate::AppState;
 
 const TRAY_ID: &str = "prbar-tray";
 
+/// Monochrome pull-request glyph used as the menu-bar icon. It is a macOS
+/// template image (opaque shape on a transparent canvas) so the system tints
+/// it to match the menu bar instead of showing the default filled square.
+const TRAY_ICON: &[u8] = include_bytes!("../icons/tray@2x.png");
+
 /// Build the tray icon and its initial menu.
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_menu(app)?;
 
+    let icon = Image::from_bytes(TRAY_ICON)?;
+
     let _tray = TrayIconBuilder::with_id(TRAY_ID)
-        .icon(app.default_window_icon().cloned().expect("default icon"))
+        .icon(icon)
         .icon_as_template(true)
         .tooltip("PRBar")
         .menu(&menu)
