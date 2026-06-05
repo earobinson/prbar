@@ -17,6 +17,25 @@ pub struct AppState {
     pub db: Arc<Db>,
 }
 
+/// Show or hide the macOS Dock icon. PRBar runs as an accessory (menu bar
+/// only); the Dock icon is shown only while the settings window is open.
+/// This is a no-op on other platforms.
+pub fn set_dock_visible(app: &tauri::AppHandle, visible: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        let policy = if visible {
+            tauri::ActivationPolicy::Regular
+        } else {
+            tauri::ActivationPolicy::Accessory
+        };
+        let _ = app.set_activation_policy(policy);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, visible);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -29,10 +48,16 @@ pub fn run() {
                 if window.label() == "settings" {
                     api.prevent_close();
                     let _ = window.hide();
+                    // Drop the Dock icon again now that settings is closed.
+                    set_dock_visible(window.app_handle(), false);
                 }
             }
         })
         .setup(|app| {
+            // PRBar lives in the menu bar / tray. Hide the Dock icon by
+            // default; it is shown only while the settings window is open.
+            set_dock_visible(app.handle(), false);
+
             let dir = app
                 .path()
                 .app_data_dir()

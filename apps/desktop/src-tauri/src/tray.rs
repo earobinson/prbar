@@ -124,6 +124,8 @@ fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
         }
         "settings" => {
             if let Some(window) = app.get_webview_window("settings") {
+                // Show the Dock icon while the settings window is visible.
+                crate::set_dock_visible(app, true);
                 let _ = window.show();
                 let _ = window.set_focus();
             }
