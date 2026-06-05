@@ -21,12 +21,6 @@
     ],
     "security": {
       "csp": null
-    },
-    "trayIcon": {
-      "id": "prbar-tray",
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true,
-      "tooltip": "PRBar"
     }
   },
   "plugins": {},
