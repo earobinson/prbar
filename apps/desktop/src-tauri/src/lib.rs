@@ -23,6 +23,33 @@ pub struct AppState {
     pub menu_signature: Mutex<Option<String>>,
 }
 
+/// Apply the PRBar app icon to the macOS Dock at runtime.
+///
+/// `tauri dev` runs the bare binary rather than a bundled `.app`, so no
+/// `icon.icns` is associated and the Dock falls back to the generic "exec"
+/// icon when the activation policy becomes `Regular` (i.e. while the Settings
+/// window is open). Setting `NSApplication`'s icon image fixes this in dev and
+/// is harmless in release builds. No-op on other platforms.
+pub fn set_dock_icon(_app: &tauri::AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::{AnyThread, MainThreadMarker};
+        use objc2_app_kit::{NSApplication, NSImage};
+        use objc2_foundation::NSData;
+
+        const ICON: &[u8] = include_bytes!("../icons/icon.png");
+
+        let Some(mtm) = MainThreadMarker::new() else {
+            return;
+        };
+        let data = NSData::with_bytes(ICON);
+        if let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) {
+            let app = NSApplication::sharedApplication(mtm);
+            unsafe { app.setApplicationIconImage(Some(&image)) };
+        }
+    }
+}
+
 /// Show or hide the macOS Dock icon. PRBar runs as an accessory (menu bar
 /// only); the Dock icon is shown only while the settings window is open.
 /// This is a no-op on other platforms.
@@ -63,6 +90,10 @@ pub fn run() {
             // PRBar lives in the menu bar / tray. Hide the Dock icon by
             // default; it is shown only while the settings window is open.
             set_dock_visible(app.handle(), false);
+            // Give the Dock the PRBar icon now so it is correct the moment the
+            // Settings window (and Dock icon) appears, including under
+            // `tauri dev` where no bundled icns is associated.
+            set_dock_icon(app.handle());
 
             let dir = app
                 .path()
