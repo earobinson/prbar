@@ -1,5 +1,7 @@
 export { AccountList } from "./AccountList";
 export type { AccountListProps } from "./AccountList";
+export { AccountForm } from "./AccountForm";
+export type { AccountFormProps, AccountFormValues } from "./AccountForm";
 export { QueryForm } from "./QueryForm";
 export type { QueryFormProps } from "./QueryForm";
 export { QueryList } from "./QueryList";

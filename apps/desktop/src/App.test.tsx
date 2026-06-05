@@ -59,8 +59,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   storeState = makeState();
   vi.stubGlobal("crypto", { randomUUID: () => "generated-id" });
-  vi.stubGlobal("alert", vi.fn());
-  vi.stubGlobal("prompt", vi.fn());
 });
 
 describe("App", () => {
@@ -78,13 +76,19 @@ describe("App", () => {
     expect(screen.getByText("Loading…")).toBeInTheDocument();
   });
 
-  it("adds an account when all prompts are answered", async () => {
-    (window.prompt as ReturnType<typeof vi.fn>)
-      .mockReturnValueOnce("Personal")
-      .mockReturnValueOnce("octofriend")
-      .mockReturnValueOnce("token-123");
+  it("adds an account through the in-app form", async () => {
     render(<App />);
     fireEvent.click(screen.getByText("Add Account"));
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Personal" },
+    });
+    fireEvent.change(screen.getByLabelText("GitHub Username"), {
+      target: { value: "octofriend" },
+    });
+    fireEvent.change(screen.getByLabelText("Personal Access Token"), {
+      target: { value: "token-123" },
+    });
+    fireEvent.click(screen.getByText("Save"));
     await waitFor(() =>
       expect(actions.addAccount).toHaveBeenCalledWith(
         { name: "Personal", githubUsername: "octofriend" },
@@ -93,44 +97,41 @@ describe("App", () => {
     );
   });
 
-  it("aborts adding an account when a prompt is cancelled", () => {
-    (window.prompt as ReturnType<typeof vi.fn>).mockReturnValueOnce(null);
+  it("aborts adding an account when cancelled", () => {
     render(<App />);
     fireEvent.click(screen.getByText("Add Account"));
+    fireEvent.click(screen.getByText("Cancel"));
     expect(actions.addAccount).not.toHaveBeenCalled();
+    expect(screen.getByText("Add Account")).toBeInTheDocument();
   });
 
-  it("renames an account when a name is provided", async () => {
-    (window.prompt as ReturnType<typeof vi.fn>).mockReturnValueOnce("Renamed");
+  it("renames an account through the in-app form", async () => {
     render(<App />);
     fireEvent.click(screen.getByText("Rename"));
+    const nameInput = screen.getByLabelText("Name") as HTMLInputElement;
+    expect(nameInput.value).toBe("Work");
+    fireEvent.change(nameInput, { target: { value: "Renamed" } });
+    fireEvent.click(screen.getByText("Save"));
     await waitFor(() =>
       expect(actions.renameAccount).toHaveBeenCalledWith("a1", "Renamed"),
     );
   });
 
-  it("does not rename when the prompt is cancelled", () => {
-    (window.prompt as ReturnType<typeof vi.fn>).mockReturnValueOnce(null);
-    render(<App />);
-    fireEvent.click(screen.getByText("Rename"));
-    expect(actions.renameAccount).not.toHaveBeenCalled();
-  });
-
-  it("alerts that a token is valid", async () => {
+  it("shows an inline status when a token is valid", async () => {
     validateAccount.mockResolvedValue(true);
     render(<App />);
     fireEvent.click(screen.getByText("Validate Token"));
     await waitFor(() =>
-      expect(window.alert).toHaveBeenCalledWith("Token is valid."),
+      expect(screen.getByText("Token is valid")).toBeInTheDocument(),
     );
   });
 
-  it("alerts that a token is invalid", async () => {
+  it("shows an inline status when a token is invalid", async () => {
     validateAccount.mockResolvedValue(false);
     render(<App />);
     fireEvent.click(screen.getByText("Validate Token"));
     await waitFor(() =>
-      expect(window.alert).toHaveBeenCalledWith("Token is invalid."),
+      expect(screen.getByText("Token is invalid")).toBeInTheDocument(),
     );
   });
 

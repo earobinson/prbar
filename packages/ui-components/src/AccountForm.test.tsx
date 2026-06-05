@@ -1,0 +1,59 @@
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { AccountForm } from "./AccountForm";
+
+describe("AccountForm", () => {
+  it("submits trimmed values for a new account", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AccountForm title="Add Account" onSubmit={onSubmit} onCancel={vi.fn()} />,
+    );
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "  Work  " },
+    });
+    fireEvent.change(screen.getByLabelText("GitHub Username"), {
+      target: { value: " octocat " },
+    });
+    fireEvent.change(screen.getByLabelText("Personal Access Token"), {
+      target: { value: " tok " },
+    });
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: "Work",
+      githubUsername: "octocat",
+      token: "tok",
+    });
+  });
+
+  it("hides the token field and prefills when renaming", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AccountForm
+        title="Rename Account"
+        requireToken={false}
+        initial={{ name: "Work", githubUsername: "octocat" }}
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.queryByLabelText("Personal Access Token")).toBeNull();
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe(
+      "Work",
+    );
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: "Work",
+      githubUsername: "octocat",
+      token: "",
+    });
+  });
+
+  it("calls onCancel when cancelled", () => {
+    const onCancel = vi.fn();
+    render(
+      <AccountForm title="Add Account" onSubmit={vi.fn()} onCancel={onCancel} />,
+    );
+    fireEvent.click(screen.getByText("Cancel"));
+    expect(onCancel).toHaveBeenCalled();
+  });
+});

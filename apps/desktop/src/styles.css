@@ -2,8 +2,35 @@
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
-  color: #1f2328;
-  background: #ffffff;
+
+  --fg: #1f2328;
+  --bg: #ffffff;
+  --muted: #57606a;
+  --border: #d0d7de;
+  --row-border: #eaeef2;
+  --surface: #f6f8fa;
+  --hover: #eaeef2;
+  --error: #cf222e;
+  --success: #1a7f37;
+
+  color: var(--fg);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e6edf3;
+    --bg: #0d1117;
+    --muted: #8b949e;
+    --border: #30363d;
+    --row-border: #21262d;
+    --surface: #161b22;
+    --hover: #21262d;
+    --error: #f85149;
+    --success: #3fb950;
+
+    color-scheme: dark;
+  }
 }
 
 * {
@@ -43,7 +70,7 @@ ul {
   flex-direction: column;
   gap: 0.25rem;
   padding: 0.5rem 0;
-  border-bottom: 1px solid #eaeef2;
+  border-bottom: 1px solid var(--row-border);
 }
 
 .account-meta {
@@ -53,8 +80,27 @@ ul {
 }
 
 .account-username {
-  color: #57606a;
+  color: var(--muted);
   font-size: 0.85rem;
+}
+
+.account-status {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.account-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 600;
 }
 
 .account-actions,
@@ -65,7 +111,7 @@ ul {
 }
 
 .query-search {
-  background: #f6f8fa;
+  background: var(--surface);
   padding: 0.15rem 0.35rem;
   border-radius: 4px;
   font-size: 0.8rem;
@@ -98,32 +144,36 @@ button {
 }
 
 input[type="text"],
+input[type="password"],
 input:not([type]),
 input[type="number"],
 select {
   padding: 0.35rem 0.5rem;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--border);
   border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
 }
 
 button {
   padding: 0.3rem 0.7rem;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: #f6f8fa;
+  background: var(--surface);
+  color: var(--fg);
   cursor: pointer;
 }
 
 button:hover {
-  background: #eaeef2;
+  background: var(--hover);
 }
 
 .error {
-  color: #cf222e;
+  color: var(--error);
 }
 
 .empty {
-  color: #57606a;
+  color: var(--muted);
 }
 
 /* Tray / menu popover */
@@ -146,16 +196,16 @@ button:hover {
 }
 
 .match-item:hover {
-  background: #eaeef2;
+  background: var(--hover);
 }
 
 .match-label {
-  color: #57606a;
+  color: var(--muted);
   font-size: 0.75rem;
 }
 
 .match-count {
-  color: #57606a;
+  color: var(--muted);
   font-size: 0.8rem;
   padding-top: 0.25rem;
 }
