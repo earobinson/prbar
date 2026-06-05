@@ -73,7 +73,7 @@ export function AccountForm({
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            placeholder="repo, read:org"
+            placeholder="Pull requests: Read, Contents: Read"
             required
             autoComplete="off"
           />
@@ -82,11 +82,11 @@ export function AccountForm({
       {requireToken && (
         <a
           className="token-help"
-          href="https://github.com/settings/tokens/new?scopes=repo,read:org&description=PRBar"
+          href="https://github.com/settings/personal-access-tokens/new"
           target="_blank"
           rel="noreferrer"
         >
-          Create a personal access token →
+          Create a fine-grained personal access token →
         </a>
       )}
 
