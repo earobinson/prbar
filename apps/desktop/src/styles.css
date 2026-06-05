@@ -254,6 +254,19 @@ ul {
   color: var(--muted);
 }
 
+.token-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 0.25rem 0 0;
+}
+
+.token-hint code {
+  background: var(--surface);
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+}
+
 .account-actions,
 .query-actions,
 .form-actions {

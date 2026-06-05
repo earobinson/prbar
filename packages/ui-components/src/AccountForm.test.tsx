@@ -48,6 +48,19 @@ describe("AccountForm", () => {
     });
   });
 
+  it("links to a classic token with the repo scope", () => {
+    render(
+      <AccountForm title="Add Account" onSubmit={vi.fn()} onCancel={vi.fn()} />,
+    );
+    const link = screen.getByRole("link", {
+      name: /classic token/i,
+    }) as HTMLAnchorElement;
+    expect(link.href).toContain("github.com/settings/tokens/new");
+    expect(link.href).toContain("scopes=repo");
+    // Explains why fine-grained tokens miss cross-org review requests.
+    expect(screen.getByText(/review-requested:@me/)).toBeInTheDocument();
+  });
+
   it("calls onCancel when cancelled", () => {
     const onCancel = vi.fn();
     render(

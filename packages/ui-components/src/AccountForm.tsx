@@ -81,7 +81,7 @@ export function AccountForm({
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            placeholder="Pull requests: Read, Contents: Read"
+            placeholder="Classic token with the 'repo' scope"
             required
             autoComplete="off"
           />
@@ -90,12 +90,20 @@ export function AccountForm({
       {showToken && (
         <a
           className="token-help"
-          href="https://github.com/settings/personal-access-tokens/new"
+          href="https://github.com/settings/tokens/new?description=PRBar&scopes=repo,read:org"
           target="_blank"
           rel="noreferrer"
         >
-          Create a fine-grained personal access token →
+          Create a classic token (repo scope) →
         </a>
+      )}
+      {showToken && (
+        <p className="token-hint">
+          Use a <strong>classic</strong> token with the <code>repo</code> scope.
+          Fine-grained tokens only see repositories you grant them, so queries
+          like <code>review-requested:@me</code> miss pull requests in other
+          organizations.
+        </p>
       )}
 
       <div className="form-actions">

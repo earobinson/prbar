@@ -6,7 +6,7 @@ use tauri_plugin_notification::NotificationExt;
 
 use crate::db::Db;
 use crate::engine::{diff_matches, notifications_for, MatchDiff};
-use crate::github::{self, GitHubClient};
+use crate::github::GitHubClient;
 use crate::logging;
 use crate::models::{Match, Query};
 use crate::secrets;
@@ -112,24 +112,9 @@ fn sync_query(db: &Db, query: &Query) -> Result<(Vec<Match>, MatchDiff), String>
         )
     })?;
 
-    // Resolve `@me` to the owning account's username. GitHub's REST search
-    // does not reliably resolve `@me` for fine-grained tokens, so leaving it
-    // verbatim makes queries like `review-requested:@me` silently return
-    // nothing for some accounts even when matching PRs exist.
-    let account = db
-        .get_account(&query.account_id)
-        .map_err(|e| format!("{}: could not read account: {e}", query.name))?
-        .ok_or_else(|| {
-            format!(
-                "{}: account not found. Open Settings → Accounts to reconnect it.",
-                query.name
-            )
-        })?;
-    let search = github::resolve_me(&query.search_query, &account.github_username);
-
     let client = GitHubClient::new(token);
     let matches = client
-        .search_pull_requests(&query.id, &search)
+        .search_pull_requests(&query.id, &query.search_query)
         .map_err(|e| format!("{}: GitHub search failed: {e}", query.name))?;
 
     let previous = db.cached_matches(&query.id).unwrap_or_default();

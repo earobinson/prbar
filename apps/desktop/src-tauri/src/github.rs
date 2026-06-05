@@ -38,44 +38,65 @@ fn repository_from_url(repository_url: &str) -> String {
     }
 }
 
-/// Replace the `@me` shortcut in a search query with an explicit GitHub
-/// login. GitHub's web search resolves `@me` to the signed-in user, but the
-/// REST `/search/issues` endpoint does **not** reliably resolve it for
-/// fine-grained personal access tokens — it silently returns zero results.
-/// Because PRBar runs the same query across multiple accounts, we resolve
-/// `@me` deterministically to the owning account's username so each query is
-/// unambiguously scoped to that account's user.
-///
-/// Only whole `@me` tokens are replaced (e.g. in `review-requested:@me` or
-/// `author:@me`); substrings like `@menlo` are left untouched.
-pub fn resolve_me(query: &str, username: &str) -> String {
-    let trimmed = username.trim();
-    if trimmed.is_empty() {
-        return query.to_string();
-    }
+/// Result of pulling sort/order out of a search query.
+#[derive(Debug, PartialEq, Eq)]
+pub struct SortSpec {
+    /// The query with any `sort:`/`order:` qualifiers removed.
+    pub query: String,
+    /// REST `sort` parameter value (e.g. "updated", "comments").
+    pub sort: Option<String>,
+    /// REST `order` parameter value ("asc" or "desc").
+    pub order: Option<String>,
+}
 
-    let bytes = query.as_bytes();
-    let mut out = String::with_capacity(query.len());
-    let mut i = 0;
-    while i < query.len() {
-        if query[i..].starts_with("@me") {
-            // The character immediately after "@me" must not be part of a
-            // longer login (GitHub logins allow alphanumerics and hyphens).
-            let next = bytes.get(i + 3).copied();
-            let continues = next
-                .map(|c| c.is_ascii_alphanumeric() || c == b'-')
-                .unwrap_or(false);
-            if !continues {
-                out.push_str(trimmed);
-                i += 3;
+/// Extract GitHub's inline `sort:` / `order:` qualifiers from a search query
+/// and translate them into the REST API's separate `sort` and `order`
+/// parameters.
+///
+/// This matters because GitHub's **web** search accepts inline qualifiers
+/// like `sort:updated-desc`, but the **REST** `/search/issues` endpoint does
+/// not: there, sorting is controlled by the `sort` and `order` query-string
+/// parameters, and a literal `sort:updated-desc` inside `q` is treated as a
+/// free-text term that matches nothing — silently returning zero results.
+///
+/// Supported forms:
+/// - `sort:updated-desc` → sort=updated, order=desc
+/// - `sort:updated-asc`  → sort=updated, order=asc
+/// - `sort:updated`      → sort=updated (order defaults to desc server-side)
+/// - `order:asc` / `order:desc` (standalone) → order=…
+pub fn extract_sort(query: &str) -> SortSpec {
+    let mut sort: Option<String> = None;
+    let mut order: Option<String> = None;
+    let mut kept: Vec<&str> = Vec::new();
+
+    for token in query.split_whitespace() {
+        if let Some(value) = token.strip_prefix("sort:") {
+            let value = value.trim_matches('"');
+            // Split a trailing "-asc"/"-desc" suffix off the sort field.
+            match value.rsplit_once('-') {
+                Some((field, dir @ ("asc" | "desc"))) if !field.is_empty() => {
+                    sort = Some(field.to_string());
+                    order = Some(dir.to_string());
+                }
+                _ => sort = Some(value.to_string()),
+            }
+            continue;
+        }
+        if let Some(value) = token.strip_prefix("order:") {
+            let value = value.trim_matches('"');
+            if value == "asc" || value == "desc" {
+                order = Some(value.to_string());
                 continue;
             }
         }
-        let ch = query[i..].chars().next().unwrap();
-        out.push(ch);
-        i += ch.len_utf8();
+        kept.push(token);
     }
-    out
+
+    SortSpec {
+        query: kept.join(" "),
+        sort,
+        order,
+    }
 }
 
 /// Blocking GitHub client. PRBar does not parse search syntax; the query
@@ -117,11 +138,27 @@ impl GitHubClient {
         query_id: &str,
         query: &str,
     ) -> Result<Vec<Match>, GitHubError> {
-        let url = format!(
+        // The REST search endpoint does not accept inline `sort:`/`order:`
+        // qualifiers in `q` (unlike the website); pull them out and pass them
+        // as the dedicated query-string parameters instead.
+        let SortSpec {
+            query: q,
+            sort,
+            order,
+        } = extract_sort(query);
+
+        let mut url = format!(
             "{}/search/issues?q={}&per_page=100",
             self.base_url,
-            urlencoding::encode(query)
+            urlencoding::encode(&q)
         );
+        if let Some(sort) = sort {
+            url.push_str(&format!("&sort={}", urlencoding::encode(&sort)));
+        }
+        if let Some(order) = order {
+            url.push_str(&format!("&order={}", urlencoding::encode(&order)));
+        }
+
         let response = self
             .request(&url)
             .send()
@@ -191,52 +228,43 @@ mod tests {
     }
 
     #[test]
-    fn resolve_me_replaces_review_requested() {
-        assert_eq!(
-            resolve_me(
-                "is:pr review-requested:@me archived:false sort:updated-desc",
-                "beacon"
-            ),
-            "is:pr review-requested:beacon archived:false sort:updated-desc"
-        );
+    fn extract_sort_pulls_field_and_direction() {
+        let spec = extract_sort("is:pr review-requested:beacon archived:false sort:updated-desc");
+        assert_eq!(spec.query, "is:pr review-requested:beacon archived:false");
+        assert_eq!(spec.sort.as_deref(), Some("updated"));
+        assert_eq!(spec.order.as_deref(), Some("desc"));
     }
 
     #[test]
-    fn resolve_me_replaces_every_occurrence() {
-        assert_eq!(
-            resolve_me("author:@me assignee:@me", "octocat"),
-            "author:octocat assignee:octocat"
-        );
+    fn extract_sort_handles_ascending() {
+        let spec = extract_sort("is:pr sort:comments-asc");
+        assert_eq!(spec.query, "is:pr");
+        assert_eq!(spec.sort.as_deref(), Some("comments"));
+        assert_eq!(spec.order.as_deref(), Some("asc"));
     }
 
     #[test]
-    fn resolve_me_handles_trailing_me_token() {
-        assert_eq!(resolve_me("review-requested:@me", "octocat"), "review-requested:octocat");
+    fn extract_sort_field_without_direction() {
+        let spec = extract_sort("is:pr sort:updated");
+        assert_eq!(spec.query, "is:pr");
+        assert_eq!(spec.sort.as_deref(), Some("updated"));
+        assert_eq!(spec.order, None);
     }
 
     #[test]
-    fn resolve_me_leaves_other_logins_untouched() {
-        // "@menlo" begins with "@me" but is a different login and must be kept.
-        assert_eq!(
-            resolve_me("author:@menlo review-requested:@me", "octocat"),
-            "author:@menlo review-requested:octocat"
-        );
+    fn extract_sort_standalone_order_qualifier() {
+        let spec = extract_sort("is:pr order:asc");
+        assert_eq!(spec.query, "is:pr");
+        assert_eq!(spec.sort, None);
+        assert_eq!(spec.order.as_deref(), Some("asc"));
     }
 
     #[test]
-    fn resolve_me_trims_username() {
-        assert_eq!(resolve_me("author:@me", "  octocat\n"), "author:octocat");
-    }
-
-    #[test]
-    fn resolve_me_without_username_is_unchanged() {
-        // An empty username must not corrupt the query into "author:".
-        assert_eq!(resolve_me("author:@me", "   "), "author:@me");
-    }
-
-    #[test]
-    fn resolve_me_without_me_token_is_unchanged() {
-        assert_eq!(resolve_me("is:pr author:octocat", "beacon"), "is:pr author:octocat");
+    fn extract_sort_without_sort_is_unchanged() {
+        let spec = extract_sort("is:pr review-requested:beacon archived:false");
+        assert_eq!(spec.query, "is:pr review-requested:beacon archived:false");
+        assert_eq!(spec.sort, None);
+        assert_eq!(spec.order, None);
     }
 
     /// Start a throwaway HTTP server that answers a single request with the
@@ -276,6 +304,41 @@ mod tests {
         let (base, _rx) = serve_once("200 OK");
         let client = GitHubClient::with_base_url("tok", base);
         assert!(client.validate().unwrap());
+    }
+
+    fn request_target(request: &str) -> String {
+        request
+            .lines()
+            .next()
+            .and_then(|l| l.split_whitespace().nth(1))
+            .unwrap_or("")
+            .to_string()
+    }
+
+    #[test]
+    fn search_translates_inline_sort_to_query_params() {
+        // Regression: the user's `sort:updated-desc` qualifier was being sent
+        // verbatim inside `q`, which the REST search endpoint treats as a
+        // free-text term that matches nothing — silently returning zero PRs.
+        // It must instead become `&sort=updated&order=desc`, and `q` must no
+        // longer contain the literal `sort:` qualifier.
+        let (base, rx) = serve_once("200 OK");
+        let client = GitHubClient::with_base_url("tok", base);
+        client
+            .search_pull_requests(
+                "q1",
+                "is:pr review-requested:beacon archived:false sort:updated-desc",
+            )
+            .unwrap();
+
+        let target = request_target(&rx.recv().unwrap());
+        assert!(target.contains("sort=updated"), "sort param present: {target}");
+        assert!(target.contains("order=desc"), "order param present: {target}");
+        // The encoded `q` must not carry the inline qualifier (`sort%3A`).
+        assert!(
+            !target.contains("sort%3A") && !target.to_lowercase().contains("sort:"),
+            "inline sort qualifier stripped from q: {target}"
+        );
     }
 
     #[test]
