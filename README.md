@@ -80,12 +80,15 @@ pnpm tauri dev       # full Tauri app (requires Rust)
 
 ### GitHub token
 
-Each account uses a GitHub **fine-grained** personal access token with
-read-only permission:
+Each account uses a GitHub **fine-grained** personal access token. Under
+**Repository access**, select the repositories whose pull requests you want to
+track.
 
-```
-Pull requests: Read
-```
+PRBar only calls the `GET /search/issues` and `GET /user` endpoints, neither of
+which requires a permission scope — the automatic **Metadata: Read** that comes
+with any repository access is enough. You do **not** need to grant `Contents`,
+`Pull requests`, or any other permission; what matters is that the token can
+*access* the repositories.
 
 To track pull requests in an organization you don't personally own, set the
 token's **Resource owner** to that organization and grant it access to the

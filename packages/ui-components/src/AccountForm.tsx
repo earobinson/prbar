@@ -101,7 +101,7 @@ export function AccountForm({
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            placeholder="Fine-grained token with Pull requests: Read access"
+            placeholder="Fine-grained token with access to your repositories"
             required
             autoComplete="off"
             {...NO_AUTO_FIX}
@@ -120,8 +120,12 @@ export function AccountForm({
       )}
       {showToken && (
         <p className="token-hint">
-          Use a <strong>fine-grained</strong> personal access token with{" "}
-          <code>Pull requests</code> set to <code>Read</code>.
+          Use a <strong>fine-grained</strong> personal access token. Under{" "}
+          <strong>Repository access</strong>, select the repositories whose pull
+          requests you want to track. PRBar only searches, so no extra
+          permission scopes (like <code>Contents</code> or{" "}
+          <code>Pull requests</code>) are required — the automatic{" "}
+          <code>Metadata: Read</code> is enough.
         </p>
       )}
       {showToken && (
