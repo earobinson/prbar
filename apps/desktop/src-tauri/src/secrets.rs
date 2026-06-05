@@ -10,7 +10,10 @@ fn entry(account_id: &str) -> keyring::Result<Entry> {
 }
 
 pub fn store_token(account_id: &str, token: &str) -> keyring::Result<()> {
-    entry(account_id)?.set_password(token)
+    // Trim defensively so a pasted token's trailing whitespace/newline is
+    // never persisted; an untrimmed token yields a malformed Authorization
+    // header and GitHub reports a valid token as invalid.
+    entry(account_id)?.set_password(token.trim())
 }
 
 pub fn get_token(account_id: &str) -> keyring::Result<String> {

@@ -51,10 +51,8 @@ pub fn validate_account(state: State<'_, AppState>, id: String) -> Result<bool, 
     if state.db.get_account(&id).map_err(to_str)?.is_none() {
         return Ok(false);
     }
-    let token = match secrets::get_token(&id) {
-        Ok(token) => token,
-        Err(_) => return Ok(false),
-    };
+    let token = secrets::get_token(&id)
+        .map_err(|e| format!("could not read token from the keychain: {e}"))?;
     // Run the blocking GitHub client on a dedicated thread so it never
     // executes inside the Tauri async runtime context (which makes
     // reqwest's blocking client error out). Real errors are propagated so

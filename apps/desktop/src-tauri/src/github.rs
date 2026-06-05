@@ -53,7 +53,11 @@ impl GitHubClient {
 
     pub fn with_base_url(token: impl Into<String>, base_url: impl Into<String>) -> Self {
         GitHubClient {
-            token: token.into(),
+            // Trim the token defensively: pasted personal access tokens often
+            // carry a trailing space or newline, which would otherwise produce
+            // an `Authorization: Bearer <token> ` header that GitHub rejects
+            // with 401 — making a perfectly valid token look invalid.
+            token: token.into().trim().to_string(),
             base_url: base_url.into().trim_end_matches('/').to_string(),
             client: reqwest::blocking::Client::new(),
         }
@@ -135,6 +139,7 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpListener;
+    use std::sync::mpsc::{self, Receiver};
 
     #[test]
     fn parses_repository_from_url() {
@@ -146,14 +151,18 @@ mod tests {
     }
 
     /// Start a throwaway HTTP server that answers a single request with the
-    /// given status line, returning its base URL.
-    fn serve_once(status_line: &'static str) -> String {
+    /// given status line. Returns the base URL and a receiver that yields the
+    /// raw request bytes the server saw (so tests can assert on headers).
+    fn serve_once(status_line: &'static str) -> (String, Receiver<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
+        let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
             if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 1024];
-                let _ = stream.read(&mut buf);
+                let mut buf = [0u8; 2048];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]).to_string();
+                let _ = tx.send(request);
                 let body = "{}";
                 let response = format!(
                     "HTTP/1.1 {status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -162,25 +171,67 @@ mod tests {
                 let _ = stream.write_all(response.as_bytes());
             }
         });
-        format!("http://{addr}")
+        (format!("http://{addr}"), rx)
+    }
+
+    fn auth_header(request: &str) -> String {
+        request
+            .lines()
+            .find_map(|l| l.strip_prefix("authorization: "))
+            .unwrap_or("")
+            .to_string()
     }
 
     #[test]
     fn validate_is_true_on_success() {
-        let client = GitHubClient::with_base_url("tok", serve_once("200 OK"));
+        let (base, _rx) = serve_once("200 OK");
+        let client = GitHubClient::with_base_url("tok", base);
         assert!(client.validate().unwrap());
     }
 
     #[test]
     fn validate_is_false_when_unauthorized() {
-        let client = GitHubClient::with_base_url("tok", serve_once("401 Unauthorized"));
+        let (base, _rx) = serve_once("401 Unauthorized");
+        let client = GitHubClient::with_base_url("tok", base);
+        assert!(!client.validate().unwrap());
+    }
+
+    #[test]
+    fn validate_is_false_when_forbidden() {
+        let (base, _rx) = serve_once("403 Forbidden");
+        let client = GitHubClient::with_base_url("tok", base);
         assert!(!client.validate().unwrap());
     }
 
     #[test]
     fn validate_errors_on_unexpected_status() {
-        let client =
-            GitHubClient::with_base_url("tok", serve_once("500 Internal Server Error"));
+        let (base, _rx) = serve_once("500 Internal Server Error");
+        let client = GitHubClient::with_base_url("tok", base);
         assert!(client.validate().is_err());
+    }
+
+    #[test]
+    fn token_is_trimmed_in_authorization_header() {
+        // A pasted token frequently carries surrounding whitespace/newlines.
+        // The client must strip them so the Authorization header is exactly
+        // "Bearer <token>" — otherwise GitHub returns 401 for a valid token.
+        let (base, rx) = serve_once("200 OK");
+        let client = GitHubClient::with_base_url("  ghp_validtoken123\n", base);
+        assert!(client.validate().unwrap());
+        let request = rx.recv().unwrap();
+        assert_eq!(auth_header(&request), "Bearer ghp_validtoken123");
+    }
+
+    #[test]
+    fn untrimmed_token_would_otherwise_differ() {
+        // Guards against regressions: the trimmed header must not contain the
+        // raw whitespace that caused the "valid token is invalid" bug.
+        let (base, rx) = serve_once("200 OK");
+        let client = GitHubClient::with_base_url("tok \t", base);
+        assert!(client.validate().unwrap());
+        let request = rx.recv().unwrap();
+        let header = auth_header(&request);
+        assert_eq!(header, "Bearer tok");
+        assert!(!header.contains("tok "));
     }
 }
