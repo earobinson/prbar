@@ -1,0 +1,95 @@
+use tauri::State;
+
+use crate::models::{GitHubAccount, Match, NewAccount, Query};
+use crate::poller;
+use crate::{github::GitHubClient, secrets, AppState};
+
+/// Map any error to a string for transport across the Tauri IPC boundary.
+fn to_str<E: std::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+#[tauri::command]
+pub fn list_accounts(state: State<'_, AppState>) -> Result<Vec<GitHubAccount>, String> {
+    state.db.list_accounts().map_err(to_str)
+}
+
+#[tauri::command]
+pub fn add_account(
+    state: State<'_, AppState>,
+    account: NewAccount,
+    token: String,
+) -> Result<GitHubAccount, String> {
+    let created = GitHubAccount {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: account.name,
+        github_username: account.github_username,
+    };
+    secrets::store_token(&created.id, &token).map_err(to_str)?;
+    state.db.insert_account(&created).map_err(to_str)?;
+    Ok(created)
+}
+
+#[tauri::command]
+pub fn rename_account(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+) -> Result<(), String> {
+    state.db.rename_account(&id, &name).map_err(to_str)
+}
+
+#[tauri::command]
+pub fn remove_account(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    secrets::delete_token(&id).map_err(to_str)?;
+    state.db.delete_account(&id).map_err(to_str)
+}
+
+#[tauri::command]
+pub fn validate_account(state: State<'_, AppState>, id: String) -> Result<bool, String> {
+    // Confirm the account exists before hitting the network.
+    if state.db.get_account(&id).map_err(to_str)?.is_none() {
+        return Ok(false);
+    }
+    let token = match secrets::get_token(&id) {
+        Ok(token) => token,
+        Err(_) => return Ok(false),
+    };
+    Ok(GitHubClient::new(token).validate())
+}
+
+#[tauri::command]
+pub fn list_queries(state: State<'_, AppState>) -> Result<Vec<Query>, String> {
+    state.db.list_queries().map_err(to_str)
+}
+
+#[tauri::command]
+pub fn save_query(state: State<'_, AppState>, query: Query) -> Result<Query, String> {
+    state.db.upsert_query(&query).map_err(to_str)?;
+    Ok(query)
+}
+
+#[tauri::command]
+pub fn delete_query(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.db.delete_query(&id).map_err(to_str)
+}
+
+#[tauri::command]
+pub fn list_matches(state: State<'_, AppState>) -> Result<Vec<Match>, String> {
+    state.db.menu_matches().map_err(to_str)
+}
+
+#[tauri::command]
+pub fn refresh_now(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    poller::poll_all(&app, &state.db);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener().open_url(url, None::<&str>).map_err(to_str)
+}
