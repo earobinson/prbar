@@ -80,12 +80,19 @@ pnpm tauri dev       # full Tauri app (requires Rust)
 
 ### GitHub token
 
-Each account uses a GitHub Personal Access Token with these scopes:
+Each account uses a GitHub **fine-grained** personal access token with
+read-only permission:
 
 ```
-repo
-read:org
+Pull requests: Read
 ```
+
+To track pull requests in an organization you don't personally own, set the
+token's **Resource owner** to that organization and grant it access to the
+relevant repositories. A fine-grained token can only target a single owner, so
+add a separate PRBar account (each with its own token) per organization. The
+organization may also require an admin to approve the token before
+`review-requested:@me` returns its pull requests.
 
 Tokens are written to the OS credential store and never persisted in SQLite.
 

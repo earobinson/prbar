@@ -91,6 +91,15 @@ describe("AccountForm", () => {
     expect(screen.getByText(/review-requested:@me/)).toBeInTheDocument();
   });
 
+  it("explains how to access organization pull requests", () => {
+    render(
+      <AccountForm title="Add Account" onSubmit={vi.fn()} onCancel={vi.fn()} />,
+    );
+    // Org repos require the token's resource owner to be the organization.
+    expect(screen.getByText(/Resource owner/)).toBeInTheDocument();
+    expect(screen.getByText(/separate account/)).toBeInTheDocument();
+  });
+
   it("calls onCancel when cancelled", () => {
     const onCancel = vi.fn();
     render(

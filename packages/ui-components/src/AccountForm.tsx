@@ -121,10 +121,18 @@ export function AccountForm({
       {showToken && (
         <p className="token-hint">
           Use a <strong>fine-grained</strong> personal access token with{" "}
-          <code>Pull requests</code> set to <code>Read</code>. Grant it access to
-          every organization and repository whose pull requests you want to
-          track, otherwise queries like <code>review-requested:@me</code> miss
-          pull requests you can't see.
+          <code>Pull requests</code> set to <code>Read</code>.
+        </p>
+      )}
+      {showToken && (
+        <p className="token-hint">
+          To track pull requests in an <strong>organization</strong> you don't
+          personally own, set the token's <strong>Resource owner</strong> to
+          that organization (not your user account) and grant it access to the
+          relevant repositories. A fine-grained token can only target one owner
+          at a time, so add a <strong>separate account</strong> for each
+          organization. The org may also require an admin to approve the token
+          before <code>review-requested:@me</code> returns its pull requests.
         </p>
       )}
 

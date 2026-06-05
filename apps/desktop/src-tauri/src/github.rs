@@ -6,10 +6,36 @@ use crate::models::Match;
 pub enum GitHubError {
     #[error("network error: {0}")]
     Network(String),
-    #[error("github returned status {0}")]
-    Status(u16),
+    #[error("github returned status {status}: {message}")]
+    Status { status: u16, message: String },
     #[error("failed to parse github response: {0}")]
     Parse(String),
+}
+
+#[derive(Debug, Deserialize)]
+struct ApiError {
+    message: String,
+}
+
+/// Build a [`GitHubError::Status`] from a non-success response, surfacing
+/// GitHub's own error message in the process. This matters for fine-grained
+/// tokens: when a token isn't scoped to the organization that owns a repo,
+/// GitHub replies `403 Resource not accessible by personal access token`.
+/// Without the body, that just looked like an opaque "status 403" and the
+/// real cause (wrong token resource owner) stayed hidden.
+fn status_error(response: reqwest::blocking::Response) -> GitHubError {
+    let status = response.status().as_u16();
+    let body = response.text().unwrap_or_default();
+    let message = serde_json::from_str::<ApiError>(&body)
+        .map(|e| e.message)
+        .ok()
+        .filter(|m| !m.trim().is_empty())
+        .or_else(|| {
+            let trimmed = body.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        })
+        .unwrap_or_else(|| "no response body".to_string());
+    GitHubError::Status { status, message }
 }
 
 #[derive(Debug, Deserialize)]
@@ -170,7 +196,7 @@ impl GitHubClient {
             .map_err(|e| GitHubError::Network(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(GitHubError::Status(response.status().as_u16()));
+            return Err(status_error(response));
         }
 
         let body: SearchResponse = response
@@ -211,7 +237,7 @@ impl GitHubClient {
         } else if status.as_u16() == 401 || status.as_u16() == 403 {
             Ok(false)
         } else {
-            Err(GitHubError::Status(status.as_u16()))
+            Err(status_error(response))
         }
     }
 
@@ -226,7 +252,7 @@ impl GitHubClient {
             .send()
             .map_err(|e| GitHubError::Network(e.to_string()))?;
         if !response.status().is_success() {
-            return Err(GitHubError::Status(response.status().as_u16()));
+            return Err(status_error(response));
         }
         let user: User = response
             .json()
@@ -383,6 +409,28 @@ mod tests {
         assert!(
             !target.contains("sort%3A") && !target.to_lowercase().contains("sort:"),
             "inline sort qualifier stripped from q: {target}"
+        );
+    }
+
+    #[test]
+    fn search_surfaces_github_permission_message_on_403() {
+        // A fine-grained token that isn't scoped to the org that owns the
+        // repos gets a 403 with this exact message. It must reach the logs so
+        // the user knows to widen the token's resource owner, instead of
+        // silently appearing as zero results / an opaque status code.
+        let (base, _rx) = serve_once_body(
+            "403 Forbidden",
+            r#"{"message":"Resource not accessible by personal access token","documentation_url":"https://docs.github.com"}"#,
+        );
+        let client = GitHubClient::with_base_url("tok", base);
+        let err = client
+            .search_pull_requests("q1", "is:pr review-requested:@me")
+            .unwrap_err();
+        let rendered = err.to_string();
+        assert!(rendered.contains("403"), "status code present: {rendered}");
+        assert!(
+            rendered.contains("Resource not accessible by personal access token"),
+            "github message surfaced: {rendered}"
         );
     }
 
