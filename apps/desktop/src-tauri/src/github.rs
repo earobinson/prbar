@@ -38,6 +38,46 @@ fn repository_from_url(repository_url: &str) -> String {
     }
 }
 
+/// Replace the `@me` shortcut in a search query with an explicit GitHub
+/// login. GitHub's web search resolves `@me` to the signed-in user, but the
+/// REST `/search/issues` endpoint does **not** reliably resolve it for
+/// fine-grained personal access tokens — it silently returns zero results.
+/// Because PRBar runs the same query across multiple accounts, we resolve
+/// `@me` deterministically to the owning account's username so each query is
+/// unambiguously scoped to that account's user.
+///
+/// Only whole `@me` tokens are replaced (e.g. in `review-requested:@me` or
+/// `author:@me`); substrings like `@menlo` are left untouched.
+pub fn resolve_me(query: &str, username: &str) -> String {
+    let trimmed = username.trim();
+    if trimmed.is_empty() {
+        return query.to_string();
+    }
+
+    let bytes = query.as_bytes();
+    let mut out = String::with_capacity(query.len());
+    let mut i = 0;
+    while i < query.len() {
+        if query[i..].starts_with("@me") {
+            // The character immediately after "@me" must not be part of a
+            // longer login (GitHub logins allow alphanumerics and hyphens).
+            let next = bytes.get(i + 3).copied();
+            let continues = next
+                .map(|c| c.is_ascii_alphanumeric() || c == b'-')
+                .unwrap_or(false);
+            if !continues {
+                out.push_str(trimmed);
+                i += 3;
+                continue;
+            }
+        }
+        let ch = query[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
 /// Blocking GitHub client. PRBar does not parse search syntax; the query
 /// is passed directly to the `/search/issues` endpoint.
 pub struct GitHubClient {
@@ -148,6 +188,55 @@ mod tests {
             "octocat/hello-world"
         );
         assert_eq!(repository_from_url("nonsense"), "nonsense");
+    }
+
+    #[test]
+    fn resolve_me_replaces_review_requested() {
+        assert_eq!(
+            resolve_me(
+                "is:pr review-requested:@me archived:false sort:updated-desc",
+                "beacon"
+            ),
+            "is:pr review-requested:beacon archived:false sort:updated-desc"
+        );
+    }
+
+    #[test]
+    fn resolve_me_replaces_every_occurrence() {
+        assert_eq!(
+            resolve_me("author:@me assignee:@me", "octocat"),
+            "author:octocat assignee:octocat"
+        );
+    }
+
+    #[test]
+    fn resolve_me_handles_trailing_me_token() {
+        assert_eq!(resolve_me("review-requested:@me", "octocat"), "review-requested:octocat");
+    }
+
+    #[test]
+    fn resolve_me_leaves_other_logins_untouched() {
+        // "@menlo" begins with "@me" but is a different login and must be kept.
+        assert_eq!(
+            resolve_me("author:@menlo review-requested:@me", "octocat"),
+            "author:@menlo review-requested:octocat"
+        );
+    }
+
+    #[test]
+    fn resolve_me_trims_username() {
+        assert_eq!(resolve_me("author:@me", "  octocat\n"), "author:octocat");
+    }
+
+    #[test]
+    fn resolve_me_without_username_is_unchanged() {
+        // An empty username must not corrupt the query into "author:".
+        assert_eq!(resolve_me("author:@me", "   "), "author:@me");
+    }
+
+    #[test]
+    fn resolve_me_without_me_token_is_unchanged() {
+        assert_eq!(resolve_me("is:pr author:octocat", "beacon"), "is:pr author:octocat");
     }
 
     /// Start a throwaway HTTP server that answers a single request with the
