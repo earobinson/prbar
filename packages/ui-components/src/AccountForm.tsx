@@ -6,6 +6,18 @@ export interface AccountFormValues {
   token: string;
 }
 
+/**
+ * Attributes that stop the webview from "helpfully" auto-capitalizing,
+ * autocorrecting, or spellchecking free-text fields. GitHub usernames and
+ * search queries are case- and spelling-sensitive, so these corrections only
+ * corrupt input (e.g. turning "edward-beacon" into "Edward-beacon").
+ */
+const NO_AUTO_FIX = {
+  autoCapitalize: "none",
+  autoCorrect: "off",
+  spellCheck: false,
+} as const;
+
 export interface AccountFormProps {
   /** Heading shown above the form. */
   title: string;
@@ -58,6 +70,7 @@ export function AccountForm({
             onChange={(e) => setName(e.target.value)}
             placeholder="Work GitHub"
             required
+            {...NO_AUTO_FIX}
           />
         </label>
       )}
@@ -69,9 +82,16 @@ export function AccountForm({
             value={githubUsername}
             onChange={(e) => setGithubUsername(e.target.value)}
             placeholder="octocat"
-            required
+            required={!requireToken}
+            {...NO_AUTO_FIX}
           />
         </label>
+      )}
+      {!tokenOnly && requireToken && (
+        <span className="field-hint">
+          Username is optional — leave it blank to detect it automatically from
+          the token.
+        </span>
       )}
 
       {showToken && (
@@ -84,6 +104,7 @@ export function AccountForm({
             placeholder="Classic token with the 'repo' scope"
             required
             autoComplete="off"
+            {...NO_AUTO_FIX}
           />
         </label>
       )}

@@ -28,12 +28,20 @@ describe("api", () => {
     });
   });
 
-  it("renameAccount forwards id and name", async () => {
-    await api.renameAccount("a1", "New");
-    expect(invoke).toHaveBeenCalledWith("rename_account", {
+  it("updateAccount forwards id, name and username", async () => {
+    await api.updateAccount("a1", "New", "octocat");
+    expect(invoke).toHaveBeenCalledWith("update_account", {
       id: "a1",
       name: "New",
+      githubUsername: "octocat",
     });
+  });
+
+  it("fetchGithubLogin forwards the token", async () => {
+    invoke.mockResolvedValue("octocat");
+    const login = await api.fetchGithubLogin("tok");
+    expect(invoke).toHaveBeenCalledWith("fetch_github_login", { token: "tok" });
+    expect(login).toBe("octocat");
   });
 
   it("removeAccount forwards id", async () => {

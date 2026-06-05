@@ -2,6 +2,17 @@ import { useState } from "react";
 import type { GitHubAccount, Query } from "@prbar/shared-types";
 import { POLL_INTERVAL, clampPollInterval } from "@prbar/shared-types";
 
+/**
+ * Attributes that stop the webview from auto-capitalizing, autocorrecting, or
+ * spellchecking free-text fields. Search queries are case- and
+ * spelling-sensitive, so these "corrections" only corrupt the input.
+ */
+const NO_AUTO_FIX = {
+  autoCapitalize: "none",
+  autoCorrect: "off",
+  spellCheck: false,
+} as const;
+
 export interface QueryFormProps {
   accounts: GitHubAccount[];
   initial?: Query;
@@ -61,6 +72,7 @@ export function QueryForm({
           value={draft.name}
           onChange={(e) => update("name", e.target.value)}
           required
+          {...NO_AUTO_FIX}
         />
       </label>
 
@@ -85,6 +97,7 @@ export function QueryForm({
           onChange={(e) => update("searchQuery", e.target.value)}
           placeholder="is:pr review-requested:@me state:open"
           required
+          {...NO_AUTO_FIX}
         />
       </label>
 

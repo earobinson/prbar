@@ -267,6 +267,14 @@ ul {
   border-radius: 4px;
 }
 
+.field-hint {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 0.25rem 0 0;
+}
+
 .account-actions,
 .query-actions,
 .form-actions {

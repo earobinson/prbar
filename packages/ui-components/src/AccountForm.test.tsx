@@ -25,11 +25,11 @@ describe("AccountForm", () => {
     });
   });
 
-  it("hides the token field and prefills when renaming", () => {
+  it("hides the token field and prefills when editing", () => {
     const onSubmit = vi.fn();
     render(
       <AccountForm
-        title="Rename Account"
+        title="Edit Account"
         requireToken={false}
         initial={{ name: "Work", githubUsername: "octocat" }}
         onSubmit={onSubmit}
@@ -40,11 +40,40 @@ describe("AccountForm", () => {
     expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe(
       "Work",
     );
+    expect(
+      (screen.getByLabelText("GitHub Username") as HTMLInputElement).value,
+    ).toBe("octocat");
     fireEvent.click(screen.getByText("Save"));
     expect(onSubmit).toHaveBeenCalledWith({
       name: "Work",
       githubUsername: "octocat",
       token: "",
+    });
+  });
+
+  it("allows a blank username when adding for auto-detection", () => {
+    const onSubmit = vi.fn();
+    render(
+      <AccountForm title="Add Account" onSubmit={onSubmit} onCancel={vi.fn()} />,
+    );
+    const username = screen.getByLabelText(
+      "GitHub Username",
+    ) as HTMLInputElement;
+    expect(username.required).toBe(false);
+    expect(
+      screen.getByText(/detect it automatically from the token/i),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Work" },
+    });
+    fireEvent.change(screen.getByLabelText("Personal Access Token"), {
+      target: { value: "tok" },
+    });
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: "Work",
+      githubUsername: "",
+      token: "tok",
     });
   });
 

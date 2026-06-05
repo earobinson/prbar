@@ -10,7 +10,7 @@ const accounts: GitHubAccount[] = [
 function setup(overrides: Partial<GitHubAccount>[] = []) {
   const handlers = {
     onAdd: vi.fn(),
-    onRename: vi.fn(),
+    onEdit: vi.fn(),
     onRemove: vi.fn(),
     onValidate: vi.fn(),
     onUpdateToken: vi.fn(),
@@ -29,7 +29,7 @@ describe("AccountList", () => {
       <AccountList
         accounts={[]}
         onAdd={vi.fn()}
-        onRename={vi.fn()}
+        onEdit={vi.fn()}
         onRemove={vi.fn()}
         onValidate={vi.fn()}
         onUpdateToken={vi.fn()}
@@ -54,11 +54,11 @@ describe("AccountList", () => {
     const handlers = setup();
     fireEvent.click(screen.getByText("Validate Token"));
     fireEvent.click(screen.getByText("Update Token"));
-    fireEvent.click(screen.getByText("Rename"));
+    fireEvent.click(screen.getByText("Edit"));
     fireEvent.click(screen.getByText("Remove"));
     expect(handlers.onValidate).toHaveBeenCalledWith(accounts[0]);
     expect(handlers.onUpdateToken).toHaveBeenCalledWith(accounts[0]);
-    expect(handlers.onRename).toHaveBeenCalledWith(accounts[0]);
+    expect(handlers.onEdit).toHaveBeenCalledWith(accounts[0]);
     expect(handlers.onRemove).toHaveBeenCalledWith(accounts[0]);
   });
 
@@ -67,7 +67,7 @@ describe("AccountList", () => {
       <AccountList
         accounts={accounts}
         onAdd={vi.fn()}
-        onRename={vi.fn()}
+        onEdit={vi.fn()}
         onRemove={vi.fn()}
         onValidate={vi.fn()}
         onUpdateToken={vi.fn()}

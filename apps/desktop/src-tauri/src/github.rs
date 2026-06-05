@@ -19,6 +19,11 @@ struct SearchResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct User {
+    login: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct SearchItem {
     number: i64,
     title: String,
@@ -209,6 +214,25 @@ impl GitHubClient {
             Err(GitHubError::Status(status.as_u16()))
         }
     }
+
+    /// Fetch the authenticated user's login (the exact, correctly-cased
+    /// username) by calling `GET /user`. This lets PRBar derive the GitHub
+    /// username from the token instead of relying on the user to type it,
+    /// avoiding mistakes like the wrong letter case.
+    pub fn fetch_login(&self) -> Result<String, GitHubError> {
+        let url = format!("{}/user", self.base_url);
+        let response = self
+            .request(&url)
+            .send()
+            .map_err(|e| GitHubError::Network(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(GitHubError::Status(response.status().as_u16()));
+        }
+        let user: User = response
+            .json()
+            .map_err(|e| GitHubError::Parse(e.to_string()))?;
+        Ok(user.login)
+    }
 }
 
 #[cfg(test)]
@@ -271,6 +295,14 @@ mod tests {
     /// given status line. Returns the base URL and a receiver that yields the
     /// raw request bytes the server saw (so tests can assert on headers).
     fn serve_once(status_line: &'static str) -> (String, Receiver<String>) {
+        serve_once_body(status_line, "{}")
+    }
+
+    /// Like [`serve_once`] but with a custom JSON response body.
+    fn serve_once_body(
+        status_line: &'static str,
+        body: &'static str,
+    ) -> (String, Receiver<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let (tx, rx) = mpsc::channel();
@@ -280,7 +312,6 @@ mod tests {
                 let n = stream.read(&mut buf).unwrap_or(0);
                 let request = String::from_utf8_lossy(&buf[..n]).to_string();
                 let _ = tx.send(request);
-                let body = "{}";
                 let response = format!(
                     "HTTP/1.1 {status_line}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
@@ -304,6 +335,20 @@ mod tests {
         let (base, _rx) = serve_once("200 OK");
         let client = GitHubClient::with_base_url("tok", base);
         assert!(client.validate().unwrap());
+    }
+
+    #[test]
+    fn fetch_login_returns_the_correctly_cased_username() {
+        let (base, _rx) = serve_once_body("200 OK", r#"{"login":"edward-beacon"}"#);
+        let client = GitHubClient::with_base_url("tok", base);
+        assert_eq!(client.fetch_login().unwrap(), "edward-beacon");
+    }
+
+    #[test]
+    fn fetch_login_errors_when_unauthorized() {
+        let (base, _rx) = serve_once_body("401 Unauthorized", "{}");
+        let client = GitHubClient::with_base_url("tok", base);
+        assert!(client.fetch_login().is_err());
     }
 
     fn request_target(request: &str) -> String {

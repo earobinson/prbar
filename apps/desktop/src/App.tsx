@@ -20,7 +20,7 @@ type Editing =
 type AccountEditing =
   | { kind: "none" }
   | { kind: "new" }
-  | { kind: "rename"; account: GitHubAccount }
+  | { kind: "edit"; account: GitHubAccount }
   | { kind: "token"; account: GitHubAccount };
 
 type Tab = "accounts" | "queries" | "logs" | "development";
@@ -47,7 +47,7 @@ export function App() {
     error,
     loadAll,
     addAccount,
-    renameAccount,
+    updateAccount,
     setAccountToken,
     removeAccount,
     saveQuery,
@@ -71,9 +71,13 @@ export function App() {
   }, [loadAll]);
 
   async function handleAccountSubmit(values: AccountFormValues) {
-    if (accountEditing.kind === "rename") {
-      if (!values.name) return;
-      await renameAccount(accountEditing.account.id, values.name);
+    if (accountEditing.kind === "edit") {
+      if (!values.name || !values.githubUsername) return;
+      await updateAccount(
+        accountEditing.account.id,
+        values.name,
+        values.githubUsername,
+      );
     } else if (accountEditing.kind === "token") {
       if (!values.token) return;
       await setAccountToken(accountEditing.account.id, values.token);
@@ -82,7 +86,8 @@ export function App() {
         [accountEditing.account.id]: "Token saved",
       }));
     } else {
-      if (!values.name || !values.githubUsername || !values.token) return;
+      // Adding: the username may be left blank and detected from the token.
+      if (!values.name || !values.token) return;
       await addAccount(
         { name: values.name, githubUsername: values.githubUsername },
         values.token,
@@ -152,8 +157,8 @@ export function App() {
                 accounts={accounts}
                 statuses={statuses}
                 onAdd={() => setAccountEditing({ kind: "new" })}
-                onRename={(account) =>
-                  setAccountEditing({ kind: "rename", account })
+                onEdit={(account) =>
+                  setAccountEditing({ kind: "edit", account })
                 }
                 onUpdateToken={(account) =>
                   setAccountEditing({ kind: "token", account })
@@ -164,8 +169,8 @@ export function App() {
             ) : (
               <AccountForm
                 title={
-                  accountEditing.kind === "rename"
-                    ? "Rename Account"
+                  accountEditing.kind === "edit"
+                    ? "Edit Account"
                     : accountEditing.kind === "token"
                       ? "Update Token"
                       : "Add Account"
@@ -173,7 +178,7 @@ export function App() {
                 requireToken={accountEditing.kind === "new"}
                 tokenOnly={accountEditing.kind === "token"}
                 initial={
-                  accountEditing.kind === "rename"
+                  accountEditing.kind === "edit"
                     ? {
                         name: accountEditing.account.name,
                         githubUsername: accountEditing.account.githubUsername,

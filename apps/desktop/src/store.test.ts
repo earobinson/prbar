@@ -6,7 +6,8 @@ vi.mock("./api", () => ({
     listAccounts: vi.fn(),
     listQueries: vi.fn(),
     addAccount: vi.fn(),
-    renameAccount: vi.fn(),
+    updateAccount: vi.fn(),
+    fetchGithubLogin: vi.fn(),
     setAccountToken: vi.fn(),
     removeAccount: vi.fn(),
     saveQuery: vi.fn(),
@@ -66,7 +67,7 @@ beforeEach(() => {
   mockApi.listAccounts.mockResolvedValue([account]);
   mockApi.listQueries.mockResolvedValue([query]);
   mockApi.addAccount.mockResolvedValue(account);
-  mockApi.renameAccount.mockResolvedValue(undefined);
+  mockApi.updateAccount.mockResolvedValue(undefined);
   mockApi.setAccountToken.mockResolvedValue(undefined);
   mockApi.removeAccount.mockResolvedValue(undefined);
   mockApi.saveQuery.mockResolvedValue(query);
@@ -111,9 +112,9 @@ describe("useAppStore", () => {
     expect(mockApi.listAccounts).toHaveBeenCalled();
   });
 
-  it("renameAccount delegates and reloads", async () => {
-    await useAppStore.getState().renameAccount("a1", "New");
-    expect(mockApi.renameAccount).toHaveBeenCalledWith("a1", "New");
+  it("updateAccount delegates and reloads", async () => {
+    await useAppStore.getState().updateAccount("a1", "New", "octocat");
+    expect(mockApi.updateAccount).toHaveBeenCalledWith("a1", "New", "octocat");
     expect(mockApi.listAccounts).toHaveBeenCalled();
   });
 

@@ -22,10 +22,21 @@ pub fn add_account(
     account: NewAccount,
     token: String,
 ) -> Result<GitHubAccount, String> {
+    // If the user left the username blank, derive it from the token so the
+    // stored login is exactly what GitHub reports (correct casing included).
+    let github_username = if account.github_username.trim().is_empty() {
+        let token = token.clone();
+        std::thread::spawn(move || GitHubClient::new(token).fetch_login())
+            .join()
+            .map_err(|_| "login lookup thread panicked".to_string())?
+            .map_err(|e| format!("could not detect GitHub username: {e}"))?
+    } else {
+        account.github_username
+    };
     let created = GitHubAccount {
         id: uuid::Uuid::new_v4().to_string(),
         name: account.name,
-        github_username: account.github_username,
+        github_username,
     };
     secrets::store_token(&state.db, &created.id, &token).map_err(to_str)?;
     state.db.insert_account(&created).map_err(to_str)?;
@@ -34,12 +45,29 @@ pub fn add_account(
 }
 
 #[tauri::command]
-pub fn rename_account(
+pub fn update_account(
     state: State<'_, AppState>,
     id: String,
     name: String,
+    #[allow(non_snake_case)] githubUsername: String,
 ) -> Result<(), String> {
-    state.db.rename_account(&id, &name).map_err(to_str)
+    if state.db.get_account(&id).map_err(to_str)?.is_none() {
+        return Err("account not found".to_string());
+    }
+    state
+        .db
+        .update_account(&id, &name, &githubUsername)
+        .map_err(to_str)
+}
+
+/// Look up the GitHub login for a token without creating an account, so the
+/// Add Account form can auto-fill the username from the pasted token.
+#[tauri::command]
+pub fn fetch_github_login(token: String) -> Result<String, String> {
+    std::thread::spawn(move || GitHubClient::new(token).fetch_login())
+        .join()
+        .map_err(|_| "login lookup thread panicked".to_string())?
+        .map_err(to_str)
 }
 
 /// Store (or replace) the token for an existing account. Used to repair

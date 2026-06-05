@@ -123,11 +123,17 @@ impl Db {
         Ok(())
     }
 
-    pub fn rename_account(&self, id: &str, name: &str) -> rusqlite::Result<()> {
+    /// Update an account's display name and GitHub username.
+    pub fn update_account(
+        &self,
+        id: &str,
+        name: &str,
+        github_username: &str,
+    ) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE accounts SET name = ?2 WHERE id = ?1",
-            params![id, name],
+            "UPDATE accounts SET name = ?2, github_username = ?3 WHERE id = ?1",
+            params![id, name, github_username],
         )?;
         Ok(())
     }
@@ -564,8 +570,10 @@ mod tests {
         assert_eq!(db.list_accounts().unwrap().len(), 1);
         assert!(db.get_account("a1").unwrap().is_some());
 
-        db.rename_account("a1", "Work GitHub").unwrap();
-        assert_eq!(db.get_account("a1").unwrap().unwrap().name, "Work GitHub");
+        db.update_account("a1", "Work GitHub", "octocat-new").unwrap();
+        let updated = db.get_account("a1").unwrap().unwrap();
+        assert_eq!(updated.name, "Work GitHub");
+        assert_eq!(updated.github_username, "octocat-new");
 
         db.delete_account("a1").unwrap();
         assert!(db.get_account("a1").unwrap().is_none());

@@ -24,8 +24,15 @@ export const api = {
   ): Promise<GitHubAccount> {
     return invoke("add_account", { account, token });
   },
-  renameAccount(id: string, name: string): Promise<void> {
-    return invoke("rename_account", { id, name });
+  updateAccount(
+    id: string,
+    name: string,
+    githubUsername: string,
+  ): Promise<void> {
+    return invoke("update_account", { id, name, githubUsername });
+  },
+  fetchGithubLogin(token: string): Promise<string> {
+    return invoke("fetch_github_login", { token });
   },
   setAccountToken(id: string, token: string): Promise<void> {
     return invoke("set_account_token", { id, token });

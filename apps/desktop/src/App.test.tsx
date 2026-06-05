@@ -5,7 +5,7 @@ import type { GitHubAccount, Query } from "@prbar/shared-types";
 const actions = {
   loadAll: vi.fn(),
   addAccount: vi.fn(),
-  renameAccount: vi.fn(),
+  updateAccount: vi.fn(),
   setAccountToken: vi.fn(),
   removeAccount: vi.fn(),
   saveQuery: vi.fn(),
@@ -130,15 +130,24 @@ describe("App", () => {
     expect(screen.getByText("Add Account")).toBeInTheDocument();
   });
 
-  it("renames an account through the in-app form", async () => {
+  it("edits an account through the in-app form", async () => {
     render(<App />);
-    fireEvent.click(screen.getByText("Rename"));
+    fireEvent.click(screen.getByText("Edit"));
     const nameInput = screen.getByLabelText("Name") as HTMLInputElement;
     expect(nameInput.value).toBe("Work");
     fireEvent.change(nameInput, { target: { value: "Renamed" } });
+    const usernameInput = screen.getByLabelText(
+      "GitHub Username",
+    ) as HTMLInputElement;
+    expect(usernameInput.value).toBe("octocat");
+    fireEvent.change(usernameInput, { target: { value: "octocat-new" } });
     fireEvent.click(screen.getByText("Save"));
     await waitFor(() =>
-      expect(actions.renameAccount).toHaveBeenCalledWith("a1", "Renamed"),
+      expect(actions.updateAccount).toHaveBeenCalledWith(
+        "a1",
+        "Renamed",
+        "octocat-new",
+      ),
     );
   });
 

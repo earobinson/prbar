@@ -91,7 +91,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::list_accounts,
             commands::add_account,
-            commands::rename_account,
+            commands::update_account,
+            commands::fetch_github_login,
             commands::set_account_token,
             commands::remove_account,
             commands::validate_account,

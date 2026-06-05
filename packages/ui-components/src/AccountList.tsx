@@ -3,7 +3,7 @@ import type { GitHubAccount } from "@prbar/shared-types";
 export interface AccountListProps {
   accounts: GitHubAccount[];
   onAdd: () => void;
-  onRename: (account: GitHubAccount) => void;
+  onEdit: (account: GitHubAccount) => void;
   onRemove: (account: GitHubAccount) => void;
   onValidate: (account: GitHubAccount) => void;
   onUpdateToken: (account: GitHubAccount) => void;
@@ -13,12 +13,12 @@ export interface AccountListProps {
 
 /**
  * Settings panel listing configured GitHub accounts with management
- * actions: add, rename, remove and validate token.
+ * actions: add, edit, remove and validate token.
  */
 export function AccountList({
   accounts,
   onAdd,
-  onRename,
+  onEdit,
   onRemove,
   onValidate,
   onUpdateToken,
@@ -56,8 +56,8 @@ export function AccountList({
                 <button type="button" onClick={() => onUpdateToken(account)}>
                   Update Token
                 </button>
-                <button type="button" onClick={() => onRename(account)}>
-                  Rename
+                <button type="button" onClick={() => onEdit(account)}>
+                  Edit
                 </button>
                 <button type="button" onClick={() => onRemove(account)}>
                   Remove

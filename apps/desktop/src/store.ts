@@ -22,7 +22,11 @@ interface AppState {
     account: Omit<GitHubAccount, "id">,
     token: string,
   ) => Promise<void>;
-  renameAccount: (id: string, name: string) => Promise<void>;
+  updateAccount: (
+    id: string,
+    name: string,
+    githubUsername: string,
+  ) => Promise<void>;
   setAccountToken: (id: string, token: string) => Promise<void>;
   removeAccount: (id: string) => Promise<void>;
   saveQuery: (query: Query) => Promise<void>;
@@ -75,8 +79,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().loadAll();
   },
 
-  async renameAccount(id, name) {
-    await api.renameAccount(id, name);
+  async updateAccount(id, name, githubUsername) {
+    await api.updateAccount(id, name, githubUsername);
     await get().loadAll();
   },
 
