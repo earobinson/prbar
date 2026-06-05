@@ -103,6 +103,12 @@ ul {
   font-weight: 600;
 }
 
+.token-help {
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .account-actions,
 .query-actions,
 .form-actions {

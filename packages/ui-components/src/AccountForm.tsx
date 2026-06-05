@@ -79,6 +79,16 @@ export function AccountForm({
           />
         </label>
       )}
+      {requireToken && (
+        <a
+          className="token-help"
+          href="https://github.com/settings/tokens/new?scopes=repo,read:org&description=PRBar"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Create a personal access token →
+        </a>
+      )}
 
       <div className="form-actions">
         <button type="submit">Save</button>
