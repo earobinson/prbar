@@ -14,7 +14,7 @@
   <rect x="32" y="32" width="448" height="448" rx="104" fill="url(#background)" />
   <g
     id="tray-mark"
-    fill="#000000"
+    fill="#ffffff"
     stroke-linecap="round"
     stroke-linejoin="round"
   >
@@ -24,13 +24,13 @@
     <path
       d="M176 94v304"
       fill="none"
-      stroke="#000000"
+      stroke="#ffffff"
       stroke-width="52"
     />
     <path
       d="M176 314c0-56 42-78 86-102 40-22 89-48 112-120"
       fill="none"
-      stroke="#000000"
+      stroke="#ffffff"
       stroke-width="52"
     />
   </g>
