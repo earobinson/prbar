@@ -12,7 +12,7 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "build:release": "pnpm --filter @prbar/desktop tauri build",
+    "build:release": "pnpm --filter @prbar/desktop generate:icons && pnpm --filter @prbar/desktop tauri build",
     "build:binaries": "pnpm --filter @prbar/desktop tauri build",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -137,6 +137,9 @@ pnpm build:release -- --bundles dmg
 Release artifacts for macOS (Apple Silicon & Intel), Windows x64, and Linux x64
 are produced automatically by the `Release` GitHub Actions workflow on tag push.
 
+The release build regenerates the desktop icon assets from
+`apps/desktop/src-tauri/app-icon.svg` before bundling.
+
 ## License
 
 MIT
