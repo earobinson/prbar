@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared-types" },
+    { "path": "./packages/provider-core" },
+    { "path": "./packages/github-provider" },
+    { "path": "./packages/query-engine" },
+    { "path": "./packages/notification-engine" },
+    { "path": "./packages/ui-components" },
+    { "path": "./apps/desktop" }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "jsx": "react-jsx",
+    "composite": true,
+    "noEmit": false,
+    "types": ["vite/client"]
+  },
+  "references": [
+    { "path": "../../packages/shared-types" },
+    { "path": "../../packages/provider-core" },
+    { "path": "../../packages/github-provider" },
+    { "path": "../../packages/query-engine" },
+    { "path": "../../packages/notification-engine" },
+    { "path": "../../packages/ui-components" }
+  ],
+  "include": ["src/**/*"]
+}

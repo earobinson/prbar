@@ -1,0 +1,52 @@
+[package]
+name = "prbar"
+version = "0.1.0"
+description = "PRBar - menu bar / system tray GitHub pull request monitor"
+authors = ["PRBar"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "prbar_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+reqwest = { version = "0.12", features = ["json", "blocking", "rustls-tls"], default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+uuid = { version = "1", features = ["v4"] }
+urlencoding = "2"
+thiserror = "2"
+aes-gcm = "0.10"
+base64 = "0.22"
+getrandom = "0.2"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
+# keyring 3 ships no credential store by default (it falls back to an
+# in-memory mock that does not persist), so a native backend must be
+# selected per platform. Without this, stored tokens vanish and validation
+# fails with "No matching entry found in secure storage".
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+# Set the Dock icon at runtime. `tauri dev` runs the bare binary (no .app
+# bundle), so macOS would otherwise show the generic "exec" icon in the Dock
+# while the Settings window is open.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSResponder"] }
+objc2-foundation = { version = "0.3", features = ["NSData"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }

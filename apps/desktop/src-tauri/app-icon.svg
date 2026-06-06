@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 512 512"
+  role="img"
+  aria-label="PRBar app icon"
+>
+  <defs>
+    <linearGradient id="background" x1="92" y1="36" x2="420" y2="492" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8390ff" />
+      <stop offset="100%" stop-color="#6f45f5" />
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="448" height="448" rx="104" fill="url(#background)" />
+  <g
+    id="tray-mark"
+    fill="#ffffff"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    transform="matrix(0.9 0 0 0.9 22 35)"
+  >
+    <circle cx="176" cy="94" r="56" />
+    <circle cx="344" cy="94" r="56" />
+    <circle cx="176" cy="398" r="56" />
+    <path
+      d="M176 94v304"
+      fill="none"
+      stroke="#ffffff"
+      stroke-width="52"
+    />
+    <path
+      d="M176 314c0-56 42-78 86-102 40-22 89-48 112-120"
+      fill="none"
+      stroke="#ffffff"
+      stroke-width="52"
+    />
+  </g>
+</svg>

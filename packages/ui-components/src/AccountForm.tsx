@@ -1,0 +1,151 @@
+import { useState } from "react";
+
+export interface AccountFormValues {
+  name: string;
+  githubUsername: string;
+  token: string;
+}
+
+/**
+ * Attributes that stop the webview from "helpfully" auto-capitalizing,
+ * autocorrecting, or spellchecking free-text fields. GitHub usernames and
+ * search queries are case- and spelling-sensitive, so these corrections only
+ * corrupt input (e.g. turning "edward-beacon" into "Edward-beacon").
+ */
+const NO_AUTO_FIX = {
+  autoCapitalize: "none",
+  autoCorrect: "off",
+  spellCheck: false,
+} as const;
+
+export interface AccountFormProps {
+  /** Heading shown above the form. */
+  title: string;
+  initial?: { name: string; githubUsername: string };
+  /** Whether the personal access token field is shown and required. */
+  requireToken?: boolean;
+  /** When true, only the token field is shown (repair an existing account). */
+  tokenOnly?: boolean;
+  onSubmit: (values: AccountFormValues) => void;
+  onCancel: () => void;
+}
+
+/**
+ * In-app form for adding or renaming a GitHub account. Tauri's webview does
+ * not support `window.prompt`, so account input is collected here.
+ */
+export function AccountForm({
+  title,
+  initial,
+  requireToken = true,
+  tokenOnly = false,
+  onSubmit,
+  onCancel,
+}: AccountFormProps) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [githubUsername, setGithubUsername] = useState(
+    initial?.githubUsername ?? "",
+  );
+  const [token, setToken] = useState("");
+  const showToken = requireToken || tokenOnly;
+
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    onSubmit({
+      name: name.trim(),
+      githubUsername: githubUsername.trim(),
+      token: token.trim(),
+    });
+  }
+
+  return (
+    <form className="account-form" onSubmit={handleSubmit}>
+      <h3>{title}</h3>
+
+      {!tokenOnly && (
+        <label>
+          Name
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Work GitHub"
+            required
+            {...NO_AUTO_FIX}
+          />
+        </label>
+      )}
+
+      {!tokenOnly && (
+        <label>
+          GitHub Username
+          <input
+            value={githubUsername}
+            onChange={(e) => setGithubUsername(e.target.value)}
+            placeholder="octocat"
+            required={!requireToken}
+            {...NO_AUTO_FIX}
+          />
+        </label>
+      )}
+      {!tokenOnly && requireToken && (
+        <span className="field-hint">
+          Username is optional — leave it blank to detect it automatically from
+          the token.
+        </span>
+      )}
+
+      {showToken && (
+        <label>
+          Personal Access Token
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="Fine-grained token with access to your repositories"
+            required
+            autoComplete="off"
+            {...NO_AUTO_FIX}
+          />
+        </label>
+      )}
+      {showToken && (
+        <a
+          className="token-help"
+          href="https://github.com/settings/personal-access-tokens/new"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Create a fine-grained token →
+        </a>
+      )}
+      {showToken && (
+        <p className="token-hint">
+          Use a <strong>fine-grained</strong> personal access token. Under{" "}
+          <strong>Repository access</strong>, select the repositories whose pull
+          requests you want to track. PRBar only searches, so no extra
+          permission scopes (like <code>Contents</code> or{" "}
+          <code>Pull requests</code>) are required — the automatic{" "}
+          <code>Metadata: Read</code> is enough.
+        </p>
+      )}
+      {showToken && (
+        <p className="token-hint">
+          To track pull requests in an <strong>organization</strong> you don't
+          personally own, set the token's <strong>Resource owner</strong> to
+          that organization (not your user account) and grant it access to the
+          relevant repositories. A fine-grained token can only target one owner
+          at a time, so add a <strong>separate account</strong> for each
+          organization. The org may also require an admin to approve the token
+          before <code>review-requested:@me</code> returns its pull requests.
+        </p>
+      )}
+
+      <div className="form-actions">
+        <button type="submit">Save</button>
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
