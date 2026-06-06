@@ -148,5 +148,5 @@ pub fn run() {
             commands::set_dev_settings,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running PRBar");
+        .unwrap_or_else(|e| eprintln!("error while running PRBar: {e}"));
 }

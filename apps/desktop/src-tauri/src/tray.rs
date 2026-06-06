@@ -4,6 +4,8 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, Wry};
 use tauri_plugin_opener::OpenerExt;
 
+use std::panic::{catch_unwind, AssertUnwindSafe};
+
 use crate::AppState;
 
 const TRAY_ID: &str = "prbar-tray";
@@ -63,7 +65,10 @@ pub fn update_indicator(app: &AppHandle) {
             // it if the user has it open — the "flickers away on refresh" bug.
             // Only rebuild when the visible content actually changed.
             let signature = menu_signature(&matches, &queries);
-            let mut current = state.menu_signature.lock().unwrap();
+            let mut current = match state.menu_signature.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
             if current.as_deref() != Some(signature.as_str()) {
                 if let Ok(menu) = build_menu(&app) {
                     let _ = tray.set_menu(Some(menu));
@@ -160,32 +165,34 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 }
 
 fn handle_menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
-    let id = event.id().0.as_str();
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        let id = event.id().0.as_str();
 
-    if let Some(url) = id.strip_prefix("open::") {
-        let _ = app.opener().open_url(url.to_string(), None::<&str>);
-        return;
-    }
+        if let Some(url) = id.strip_prefix("open::") {
+            let _ = app.opener().open_url(url.to_string(), None::<&str>);
+            return;
+        }
 
-    match id {
-        "refresh" => {
-            if let Some(state) = app.try_state::<AppState>() {
-                let app = app.clone();
-                let db = state.db.clone();
-                std::thread::spawn(move || crate::poller::poll_all(&app, &db));
+        match id {
+            "refresh" => {
+                if let Some(state) = app.try_state::<AppState>() {
+                    let app = app.clone();
+                    let db = state.db.clone();
+                    std::thread::spawn(move || crate::poller::poll_all(&app, &db));
+                }
             }
-        }
-        "settings" => {
-            if let Some(window) = app.get_webview_window("settings") {
-                // Show the Dock icon while the settings window is visible.
-                crate::set_dock_visible(app, true);
-                let _ = window.show();
-                let _ = window.set_focus();
+            "settings" => {
+                if let Some(window) = app.get_webview_window("settings") {
+                    // Show the Dock icon while the settings window is visible.
+                    crate::set_dock_visible(app, true);
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
             }
+            "quit" => app.exit(0),
+            _ => {}
         }
-        "quit" => app.exit(0),
-        _ => {}
-    }
+    }));
 }
 
 #[cfg(test)]

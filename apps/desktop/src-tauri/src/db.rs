@@ -20,6 +20,15 @@ pub struct Db {
 }
 
 impl Db {
+    fn conn_guard(&self) -> std::sync::MutexGuard<'_, Connection> {
+        match self.conn.lock() {
+            Ok(guard) => guard,
+            // If another thread panicked while holding the DB mutex, continue
+            // with the inner connection instead of crashing the whole app.
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
     pub fn open(path: &Path) -> rusqlite::Result<Self> {
         let conn = Connection::open(path)?;
         let token_key = TokenKey::load_or_create(path)
@@ -46,7 +55,7 @@ impl Db {
     }
 
     fn migrate(&self) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         conn.execute_batch(
             "
             CREATE TABLE IF NOT EXISTS accounts (
@@ -168,7 +177,7 @@ impl Db {
     // Accounts ---------------------------------------------------------------
 
     pub fn insert_account(&self, account: &GitHubAccount) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         conn.execute(
             "INSERT INTO accounts (id, name, github_username) VALUES (?1, ?2, ?3)",
             params![account.id, account.name, account.github_username],
@@ -183,7 +192,7 @@ impl Db {
         name: &str,
         github_username: &str,
     ) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         conn.execute(
             "UPDATE accounts SET name = ?2, github_username = ?3 WHERE id = ?1",
             params![id, name, github_username],
@@ -192,7 +201,7 @@ impl Db {
     }
 
     pub fn delete_account(&self, id: &str) -> rusqlite::Result<()> {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.conn_guard();
         let tx = conn.transaction()?;
         tx.execute("DELETE FROM accounts WHERE id = ?1", params![id])?;
         tx.execute("DELETE FROM tokens WHERE account_id = ?1", params![id])?;
@@ -230,7 +239,7 @@ impl Db {
     }
 
     pub fn list_accounts(&self) -> rusqlite::Result<Vec<GitHubAccount>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         let mut stmt =
             conn.prepare("SELECT id, name, github_username FROM accounts ORDER BY name")?;
         let rows = stmt.query_map([], |row| {
@@ -244,7 +253,7 @@ impl Db {
     }
 
     pub fn get_account(&self, id: &str) -> rusqlite::Result<Option<GitHubAccount>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         let mut stmt = conn
             .prepare("SELECT id, name, github_username FROM accounts WHERE id = ?1")?;
         let mut rows = stmt.query_map(params![id], |row| {
@@ -263,7 +272,7 @@ impl Db {
     // Queries ----------------------------------------------------------------
 
     pub fn upsert_query(&self, query: &Query) -> rusqlite::Result<()> {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.conn_guard();
         let tx = conn.transaction()?;
         // The legacy account_id column only exists to satisfy NOT NULL on old
         // databases; mirror the first targeted account (or empty).
@@ -314,7 +323,7 @@ impl Db {
     }
 
     pub fn delete_query(&self, id: &str) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         conn.execute("DELETE FROM queries WHERE id = ?1", params![id])?;
         conn.execute(
             "DELETE FROM query_accounts WHERE query_id = ?1",
@@ -328,7 +337,7 @@ impl Db {
     }
 
     pub fn list_queries(&self) -> rusqlite::Result<Vec<Query>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
 
         // Load account associations once, grouped by query (preserving insert
         // order so the primary/first account stays first).
@@ -381,7 +390,7 @@ impl Db {
     // Cached matches ---------------------------------------------------------
 
     pub fn cached_matches(&self, query_id: &str) -> rusqlite::Result<Vec<CachedMatch>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         let mut stmt = conn.prepare(
             "SELECT url, updated_at FROM cached_matches WHERE query_id = ?1",
         )?;
@@ -400,7 +409,7 @@ impl Db {
         query_id: &str,
         matches: &[Match],
     ) -> rusqlite::Result<()> {
-        let mut conn = self.conn.lock().unwrap();
+        let mut conn = self.conn_guard();
         let tx = conn.transaction()?;
         tx.execute(
             "DELETE FROM cached_matches WHERE query_id = ?1",
@@ -427,7 +436,7 @@ impl Db {
 
     /// All cached matches for queries that are enabled and shown in menu.
     pub fn menu_matches(&self) -> rusqlite::Result<Vec<Match>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         let mut stmt = conn.prepare(
             "SELECT c.query_id, c.pull_request_id, c.repository, c.title, c.url,
                     c.updated_at
@@ -455,7 +464,7 @@ impl Db {
     /// no date crate is needed). Callers are expected to have already applied
     /// the level filter; this method always inserts.
     pub fn insert_log(&self, level: LogLevel, message: &str) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         conn.execute(
             "INSERT INTO logs (timestamp, level, message)
              VALUES (datetime('now'), ?1, ?2)",
@@ -466,7 +475,7 @@ impl Db {
 
     /// Most recent log lines first, capped at `limit`.
     pub fn list_logs(&self, limit: i64) -> rusqlite::Result<Vec<LogEntry>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         let mut stmt = conn.prepare(
             "SELECT id, timestamp, level, message
              FROM logs ORDER BY id DESC LIMIT ?1",
@@ -484,7 +493,7 @@ impl Db {
     }
 
     pub fn clear_logs(&self) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         conn.execute("DELETE FROM logs", [])?;
         Ok(())
     }
@@ -492,7 +501,7 @@ impl Db {
     /// Delete log lines older than `retention_days`. A non-positive retention
     /// clears all history.
     pub fn prune_logs(&self, retention_days: i64) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         if retention_days <= 0 {
             conn.execute("DELETE FROM logs", [])?;
             return Ok(());
@@ -506,7 +515,7 @@ impl Db {
     }
 
     pub fn get_log_settings(&self) -> rusqlite::Result<LogSettings> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         let mut stmt = conn
             .prepare("SELECT level, retention_days FROM log_settings WHERE id = 1")?;
         let mut rows = stmt.query_map([], |row| {
@@ -523,7 +532,7 @@ impl Db {
     }
 
     pub fn set_log_settings(&self, settings: &LogSettings) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         conn.execute(
             "INSERT INTO log_settings (id, level, retention_days)
              VALUES (1, ?1, ?2)
@@ -544,7 +553,7 @@ impl Db {
         level: LogLevel,
         message: &str,
     ) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         conn.execute(
             "INSERT INTO logs (timestamp, level, message) VALUES (?1, ?2, ?3)",
             params![timestamp, level.as_str(), message],
@@ -562,7 +571,7 @@ impl Db {
             .token_key
             .encrypt(token)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         conn.execute(
             "INSERT INTO tokens (account_id, token) VALUES (?1, ?2)
              ON CONFLICT(account_id) DO UPDATE SET token = excluded.token",
@@ -574,7 +583,7 @@ impl Db {
     /// Read and decrypt a token from SQLite. `Ok(None)` means no row exists.
     pub fn get_db_token(&self, account_id: &str) -> rusqlite::Result<Option<String>> {
         let encrypted: Option<String> = {
-            let conn = self.conn.lock().unwrap();
+            let conn = self.conn_guard();
             let mut stmt =
                 conn.prepare("SELECT token FROM tokens WHERE account_id = ?1")?;
             let mut rows =
@@ -601,7 +610,7 @@ impl Db {
     }
 
     pub fn delete_db_token(&self, account_id: &str) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         conn.execute(
             "DELETE FROM tokens WHERE account_id = ?1",
             params![account_id],
@@ -613,7 +622,7 @@ impl Db {
     /// the value persisted to disk is ciphertext, not plaintext.
     #[cfg(test)]
     pub fn raw_db_token(&self, account_id: &str) -> rusqlite::Result<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         let mut stmt =
             conn.prepare("SELECT token FROM tokens WHERE account_id = ?1")?;
         let mut rows =
@@ -627,7 +636,7 @@ impl Db {
     // Developer settings -----------------------------------------------------
 
     pub fn get_dev_settings(&self) -> rusqlite::Result<DevSettings> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         let mut stmt =
             conn.prepare("SELECT token_storage FROM dev_settings WHERE id = 1")?;
         let mut rows = stmt.query_map([], |row| {
@@ -644,7 +653,7 @@ impl Db {
     }
 
     pub fn set_dev_settings(&self, settings: &DevSettings) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn_guard();
         conn.execute(
             "INSERT INTO dev_settings (id, token_storage) VALUES (1, ?1)
              ON CONFLICT(id) DO UPDATE SET token_storage = excluded.token_storage",
