@@ -348,6 +348,38 @@ button:hover {
   color: var(--muted);
 }
 
+/* About */
+.about-content {
+  margin-top: 1rem;
+  line-height: 1.6;
+}
+
+.about-version {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.about-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #0969da;
+  cursor: pointer;
+  font-size: inherit;
+  text-decoration: underline;
+}
+
+@media (prefers-color-scheme: dark) {
+  .about-link {
+    color: #58a6ff;
+  }
+}
+
+.about-link:hover {
+  background: none;
+  text-decoration: none;
+}
+
 /* Tray / menu popover */
 .match-menu {
   padding: 0.5rem;

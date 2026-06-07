@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import type { GitHubAccount, Query } from "@prbar/shared-types";
 
+vi.mock("@tauri-apps/api/app", () => ({
+  getVersion: vi.fn().mockResolvedValue("0.1.0"),
+}));
+
 const actions = {
   loadAll: vi.fn(),
   addAccount: vi.fn(),
@@ -301,5 +305,17 @@ describe("App", () => {
     expect(actions.saveDevSettings).toHaveBeenCalledWith({
       tokenStorage: "database",
     });
+  });
+
+  it("shows the About tab with version and GitHub link", async () => {
+    render(<App />);
+    openTab("About");
+    expect(screen.getByRole("heading", { name: "About" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText("Version 0.1.0")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("button", { name: /GitHub/i }),
+    ).toBeInTheDocument();
   });
 });
