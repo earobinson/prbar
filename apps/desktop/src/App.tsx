@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
+import { version as versionInfo } from "@prbar/version";
 import type { GitHubAccount, Query } from "@prbar/shared-types";
 import {
   AboutPanel,
@@ -72,7 +73,9 @@ export function App() {
 
   useEffect(() => {
     void loadAll();
-    void getVersion().then(setAppVersion).catch(() => undefined);
+    void getVersion()
+      .then(setAppVersion)
+      .catch(() => undefined);
   }, [loadAll]);
 
   async function handleAccountSubmit(values: AccountFormValues) {
@@ -234,7 +237,11 @@ export function App() {
           )}
 
           {tab === "about" && (
-            <AboutPanel version={appVersion} onOpenLink={api.openUrl} />
+            <AboutPanel
+              version={appVersion}
+              build={versionInfo.build}
+              onOpenLink={api.openUrl}
+            />
           )}
         </div>
       </div>

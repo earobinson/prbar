@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "./packages/version" },
     { "path": "./packages/shared-types" },
     { "path": "./packages/provider-core" },
     { "path": "./packages/github-provider" },

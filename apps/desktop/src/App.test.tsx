@@ -6,6 +6,10 @@ vi.mock("@tauri-apps/api/app", () => ({
   getVersion: vi.fn().mockResolvedValue("0.1.0"),
 }));
 
+vi.mock("@prbar/version", () => ({
+  version: { major: 0, minor: 1, patch: 0, build: 7 },
+}));
+
 const actions = {
   loadAll: vi.fn(),
   addAccount: vi.fn(),
@@ -312,10 +316,8 @@ describe("App", () => {
     openTab("About");
     expect(screen.getByRole("heading", { name: "About" })).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByText("Version 0.1.0")).toBeInTheDocument(),
+      expect(screen.getByText("Version 0.1.0.7")).toBeInTheDocument(),
     );
-    expect(
-      screen.getByRole("button", { name: /GitHub/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /GitHub/i })).toBeInTheDocument();
   });
 });
