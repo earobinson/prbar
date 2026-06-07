@@ -14,7 +14,8 @@
     { "path": "../../packages/github-provider" },
     { "path": "../../packages/query-engine" },
     { "path": "../../packages/notification-engine" },
-    { "path": "../../packages/ui-components" }
+    { "path": "../../packages/ui-components" },
+    { "path": "../../packages/version" }
   ],
   "include": ["src/**/*"]
 }

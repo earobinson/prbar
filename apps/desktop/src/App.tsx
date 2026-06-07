@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
+import { version as versionInfo } from "@prbar/version";
 import type { GitHubAccount, Query } from "@prbar/shared-types";
 import {
+  AboutPanel,
   AccountForm,
   AccountList,
   QueryForm,
@@ -23,13 +26,14 @@ type AccountEditing =
   | { kind: "edit"; account: GitHubAccount }
   | { kind: "token"; account: GitHubAccount };
 
-type Tab = "accounts" | "queries" | "logs" | "development";
+type Tab = "accounts" | "queries" | "logs" | "development" | "about";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "accounts", label: "Accounts" },
   { id: "queries", label: "Queries" },
   { id: "logs", label: "Logs" },
   { id: "development", label: "Development" },
+  { id: "about", label: "About" },
 ];
 
 /**
@@ -65,9 +69,13 @@ export function App() {
     kind: "none",
   });
   const [statuses, setStatuses] = useState<Record<string, string>>({});
+  const [appVersion, setAppVersion] = useState<string | undefined>();
 
   useEffect(() => {
     void loadAll();
+    void getVersion()
+      .then(setAppVersion)
+      .catch(() => undefined);
   }, [loadAll]);
 
   async function handleAccountSubmit(values: AccountFormValues) {
@@ -225,6 +233,14 @@ export function App() {
             <DevPanel
               settings={devSettings}
               onChangeSettings={saveDevSettings}
+            />
+          )}
+
+          {tab === "about" && (
+            <AboutPanel
+              version={appVersion}
+              build={versionInfo.build}
+              onOpenLink={api.openUrl}
             />
           )}
         </div>

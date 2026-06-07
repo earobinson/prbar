@@ -1,5 +1,5 @@
 {
-  "name": "@prbar/github-provider",
+  "name": "@prbar/version",
   "version": "0.2.0",
   "private": true,
   "type": "module",
@@ -14,9 +14,7 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@prbar/provider-core": "workspace:*"
+    "test": "vitest run",
+    "sync": "node ./scripts/sync-version.mjs"
   }
 }

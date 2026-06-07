@@ -1,3 +1,5 @@
+export { AboutPanel } from "./AboutPanel";
+export type { AboutPanelProps } from "./AboutPanel";
 export { AccountList } from "./AccountList";
 export type { AccountListProps } from "./AccountList";
 export { AccountForm } from "./AccountForm";

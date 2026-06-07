@@ -42,6 +42,7 @@ prbar/
 │       ├── src/             # React UI (settings window + tray bridge)
 │       └── src-tauri/       # Rust: SQLite, keychain, GitHub polling, tray
 ├── packages/
+│   ├── version/             # Single source of truth for the app version
 │   ├── shared-types/        # Core interfaces (Account, Query, Match)
 │   ├── provider-core/       # Provider interface + PullRequest type
 │   ├── github-provider/     # GitHub implementation of Provider
@@ -88,7 +89,7 @@ PRBar only calls the `GET /search/issues` and `GET /user` endpoints, neither of
 which requires a permission scope — the automatic **Metadata: Read** that comes
 with any repository access is enough. You do **not** need to grant `Contents`,
 `Pull requests`, or any other permission; what matters is that the token can
-*access* the repositories.
+_access_ the repositories.
 
 To track pull requests in an organization you don't personally own, set the
 token's **Resource owner** to that organization and grant it access to the
@@ -140,6 +141,68 @@ are produced automatically by the `Release` GitHub Actions workflow on tag push.
 The release build regenerates the desktop icon assets from
 `apps/desktop/src-tauri/app-icon.svg` before bundling.
 
+## Versioning
+
+The whole workspace shares one version. The single source of truth is the
+`@prbar/version` package, which stores the **major**, **minor**, **patch**, and
+**build** numbers in `packages/version/src/version.json`:
+
+```json
+{
+  "major": 0,
+  "minor": 1,
+  "patch": 0,
+  "build": 0
+}
+```
+
+Import it anywhere in the TypeScript code:
+
+```ts
+import { version, versionString, displayVersion } from "@prbar/version";
+
+versionString; // "0.1.0"          (MAJOR.MINOR.PATCH)
+displayVersion; // "0.1.0"         (adds " (build N)" when build > 0)
+version.build; // 0
+```
+
+### Setting the version
+
+Use the `version:sync` script to set the numbers and propagate the
+`MAJOR.MINOR.PATCH` version to **every** package and app manifest at once
+(the root `package.json`, all workspace `package.json` files,
+`apps/desktop/src-tauri/tauri.conf.json`, and `apps/desktop/src-tauri/Cargo.toml`).
+
+```bash
+# Set major.minor.patch (build is kept)
+pnpm version:sync 1.2.3
+
+# Set major.minor.patch and the build number
+pnpm version:sync 1.2.3.45
+
+# Set only the build number
+pnpm version:sync --build 45
+
+# Bump a single component (major|minor|patch|build)
+pnpm version:sync --bump patch
+
+# Re-apply version.json to every manifest (e.g. after editing it by hand)
+pnpm version:sync
+```
+
+Editing `packages/version/src/version.json` directly and then running
+`pnpm version:sync` (with no arguments) achieves the same result.
+
+### Checking for drift
+
+`version:check` verifies that every manifest matches `version.json` without
+writing anything. It exits non-zero on a mismatch, which makes it suitable for
+CI:
+
+```bash
+pnpm version:check
+```
+
 ## License
 
-MIT
+Released under the [MIT License](./LICENSE).

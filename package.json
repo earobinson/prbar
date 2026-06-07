@@ -1,6 +1,6 @@
 {
   "name": "prbar",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "PRBar - menu bar / system tray GitHub pull request monitor",
@@ -22,7 +22,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev": "pnpm --filter @prbar/desktop dev",
-    "tauri": "pnpm --filter @prbar/desktop tauri"
+    "tauri": "pnpm --filter @prbar/desktop tauri",
+    "version:sync": "node packages/version/scripts/sync-version.mjs",
+    "version:check": "node packages/version/scripts/sync-version.mjs --check"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
@@ -33,7 +35,7 @@
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
-    "@vitest/coverage-v8": "^2.1.8",
+    "@vitest/coverage-v8": "^4.1.0",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^9.1.0",
     "jsdom": "^29.1.1",
@@ -42,6 +44,6 @@
     "react-dom": "^18.3.1",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.0",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.0"
   }
 }
