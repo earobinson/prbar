@@ -21,9 +21,14 @@ jobs:
       release_name: ${{ steps.compute.outputs.release_name }}
       prerelease: ${{ steps.compute.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --tags --depth=1 origin "${GITHUB_REF}"
+          git checkout --detach FETCH_HEAD
 
       - name: Compute release name and channel
         id: compute
@@ -78,7 +83,14 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --tags --depth=1 origin "${GITHUB_REF}"
+          git checkout --detach FETCH_HEAD
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-latest'
@@ -91,34 +103,101 @@ jobs:
             patchelf \
             libssl-dev
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          if [[ -n "${{ matrix.args }}" ]]; then
+            target="${{ matrix.args }}"
+            target="${target#--target }"
+            rustup target add "$target"
+          fi
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: apps/desktop/src-tauri
+      - name: Install Node.js and pnpm
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NVM_DIR="$HOME/.nvm"
+          if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+            curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+          fi
+          . "$NVM_DIR/nvm.sh"
+          nvm install 22
+          nvm use 22
+          echo "$NVM_DIR/versions/node/$(nvm version 22)/bin" >> "$GITHUB_PATH"
+          corepack enable
+          corepack prepare pnpm@10.0.0 --activate
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate app icons
+        run: pnpm --filter @prbar/desktop generate:icons
+
       - name: Build the app
-        uses: tauri-apps/tauri-action@v0
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_args=()
+          if [[ -n "${{ matrix.args }}" ]]; then
+            build_args+=( ${{ matrix.args }} )
+          fi
+          pnpm --filter @prbar/desktop tauri build "${build_args[@]}"
+
+      - name: Create release if missing
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: apps/desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: ${{ needs.metadata.outputs.release_name }}
-          releaseDraft: false
-          prerelease: ${{ needs.metadata.outputs.prerelease }}
-          args: ${{ matrix.args }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          name="${{ needs.metadata.outputs.release_name }}"
+
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            prerelease_args=()
+            if [[ "${{ needs.metadata.outputs.prerelease }}" == "true" ]]; then
+              prerelease_args+=( --prerelease )
+            fi
+            gh release create "$tag" --title "$name" --notes "" "${prerelease_args[@]}"
+          fi
+
+      - name: Upload release artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+
+          if [[ -n "${{ matrix.args }}" ]]; then
+            target="${{ matrix.args }}"
+            target="${target#--target }"
+            bundle_dir="apps/desktop/src-tauri/target/${target}/release/bundle"
+            bin_dir="apps/desktop/src-tauri/target/${target}/release"
+          else
+            bundle_dir="apps/desktop/src-tauri/target/release/bundle"
+            bin_dir="apps/desktop/src-tauri/target/release"
+          fi
+
+          files=()
+          while IFS= read -r f; do
+            files+=("$f")
+          done < <(find "$bundle_dir" -type f)
+
+          case "${{ matrix.platform }}" in
+            windows-latest)
+              [[ -f "$bin_dir/prbar.exe" ]] && files+=("$bin_dir/prbar.exe")
+              ;;
+            *)
+              [[ -f "$bin_dir/prbar" ]] && files+=("$bin_dir/prbar")
+              ;;
+          esac
+
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No release artifacts found to upload."
+            exit 1
+          fi
+
+          gh release upload "$tag" --clobber "${files[@]}"
