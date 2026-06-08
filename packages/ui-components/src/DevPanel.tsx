@@ -5,18 +5,19 @@ export interface DevPanelProps {
   onChangeSettings: (settings: DevSettings) => void;
 }
 
-const STORAGE_OPTIONS: { value: TokenStorage; label: string; hint: string }[] = [
-  {
-    value: "keychain",
-    label: "OS keychain",
-    hint: "Most secure. Uses the platform credential store (macOS Keychain, Windows Credential Manager, Linux Secret Service). May prompt for your login password.",
-  },
-  {
-    value: "database",
-    label: "Encrypted database",
-    hint: "Stores tokens AES-256-GCM encrypted in the app's local database. Avoids repeated keychain prompts during development; the encryption key is kept in a separate owner-only file.",
-  },
-];
+const STORAGE_OPTIONS: { value: TokenStorage; label: string; hint: string }[] =
+  [
+    {
+      value: "keychain",
+      label: "OS keychain",
+      hint: "Most secure. Uses the platform credential store (macOS Keychain, Windows Credential Manager, Linux Secret Service). May prompt for your login password.",
+    },
+    {
+      value: "database",
+      label: "Encrypted database",
+      hint: "Stores tokens AES-256-GCM encrypted in the app's local database. Avoids repeated keychain prompts during development; the encryption key is kept in a separate owner-only file.",
+    },
+  ];
 
 /**
  * Developer settings panel. Currently exposes where account tokens are stored:

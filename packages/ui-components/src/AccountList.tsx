@@ -44,9 +44,7 @@ export function AccountList({
                   @{account.githubUsername}
                 </span>
                 {statuses[account.id] && (
-                  <span className="account-status">
-                    {statuses[account.id]}
-                  </span>
+                  <span className="account-status">{statuses[account.id]}</span>
                 )}
               </div>
               <div className="account-actions">
