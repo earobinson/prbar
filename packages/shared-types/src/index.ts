@@ -114,7 +114,10 @@ export function clampRetentionDays(days: number): number {
   if (Number.isNaN(days)) {
     return LOG_RETENTION.default;
   }
-  return Math.min(LOG_RETENTION.max, Math.max(LOG_RETENTION.min, Math.trunc(days)));
+  return Math.min(
+    LOG_RETENTION.max,
+    Math.max(LOG_RETENTION.min, Math.trunc(days)),
+  );
 }
 
 /**

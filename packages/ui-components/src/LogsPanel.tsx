@@ -1,5 +1,9 @@
 import type { LogEntry, LogLevel, LogSettings } from "@prbar/shared-types";
-import { LOG_LEVELS, LOG_RETENTION, clampRetentionDays } from "@prbar/shared-types";
+import {
+  LOG_LEVELS,
+  LOG_RETENTION,
+  clampRetentionDays,
+} from "@prbar/shared-types";
 
 export interface LogsPanelProps {
   logs: LogEntry[];

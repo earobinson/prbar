@@ -6,7 +6,11 @@ describe("AccountForm", () => {
   it("submits trimmed values for a new account", () => {
     const onSubmit = vi.fn();
     render(
-      <AccountForm title="Add Account" onSubmit={onSubmit} onCancel={vi.fn()} />,
+      <AccountForm
+        title="Add Account"
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />,
     );
     fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "  Work  " },
@@ -54,7 +58,11 @@ describe("AccountForm", () => {
   it("allows a blank username when adding for auto-detection", () => {
     const onSubmit = vi.fn();
     render(
-      <AccountForm title="Add Account" onSubmit={onSubmit} onCancel={vi.fn()} />,
+      <AccountForm
+        title="Add Account"
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />,
     );
     const username = screen.getByLabelText(
       "GitHub Username",
@@ -103,7 +111,11 @@ describe("AccountForm", () => {
   it("calls onCancel when cancelled", () => {
     const onCancel = vi.fn();
     render(
-      <AccountForm title="Add Account" onSubmit={vi.fn()} onCancel={onCancel} />,
+      <AccountForm
+        title="Add Account"
+        onSubmit={vi.fn()}
+        onCancel={onCancel}
+      />,
     );
     fireEvent.click(screen.getByText("Cancel"));
     expect(onCancel).toHaveBeenCalled();

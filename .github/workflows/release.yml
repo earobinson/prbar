@@ -3,12 +3,62 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - "release/**"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
+  metadata:
+    name: Resolve release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      release_name: ${{ steps.compute.outputs.release_name }}
+      prerelease: ${{ steps.compute.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute release name and channel
+        id: compute
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag_name="${GITHUB_REF_NAME}"
+          release_name="${tag_name#release/}"
+          current_version="${tag_name##*/}"
+          current_core="$(echo "$current_version" | cut -d. -f1-3)"
+
+          previous_version=""
+          while IFS= read -r t; do
+            if [[ "$t" == "$tag_name" ]]; then
+              continue
+            fi
+            previous_version="${t##*/}"
+            break
+          done < <(git for-each-ref --format='%(refname:lstrip=2)' --sort=-creatordate refs/tags/release)
+
+          prerelease="false"
+          if [[ -n "$previous_version" ]]; then
+            previous_core="$(echo "$previous_version" | cut -d. -f1-3)"
+            if [[ "$previous_core" == "$current_core" ]]; then
+              prerelease="true"
+            fi
+          fi
+
+          echo "release_name=$release_name" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build ${{ matrix.label }}
+    needs: metadata
     strategy:
       fail-fast: false
       matrix:
@@ -68,7 +118,7 @@ jobs:
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
-          releaseName: "PRBar ${{ github.ref_name }}"
-          releaseDraft: true
-          prerelease: false
+          releaseName: ${{ needs.metadata.outputs.release_name }}
+          releaseDraft: false
+          prerelease: ${{ needs.metadata.outputs.prerelease }}
           args: ${{ matrix.args }}

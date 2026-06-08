@@ -259,7 +259,7 @@ function main() {
   } else {
     console.log(
       `\nSynced workspace to ${versionString}` +
-      (next.build > 0 ? ` (build ${next.build}).` : "."),
+        (next.build > 0 ? ` (build ${next.build}).` : "."),
     );
   }
 }

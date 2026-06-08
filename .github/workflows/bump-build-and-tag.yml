@@ -1,0 +1,76 @@
+name: Bump Build And Tag
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bump-build-main
+  cancel-in-progress: false
+
+jobs:
+  bump-and-tag:
+    name: Bump build and create tag
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Bump build number
+        run: node packages/version/scripts/sync-version.mjs --bump build
+
+      - name: Read version metadata
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -e "const v=require('./packages/version/src/version.json'); process.stdout.write(v.major + '.' + v.minor + '.' + v.patch + '.' + v.build);")"
+          release_date="$(date -u +%F)"
+          tag="release/${release_date}/${version}"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release_date=$release_date" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Commit bumped build
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No version changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore(release): bump build to ${{ steps.version.outputs.version }}"
+          git push origin main
+
+      - name: Tag release commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.version.outputs.tag }}"
+
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "Tag already exists: $tag"
+            exit 0
+          fi
+
+          git tag "$tag"
+          git push origin "$tag"
