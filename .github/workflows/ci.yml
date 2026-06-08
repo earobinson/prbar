@@ -10,16 +10,29 @@ jobs:
     name: Lint, typecheck & test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
+      - name: Install Node.js and pnpm
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NVM_DIR="$HOME/.nvm"
+          if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+            curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+          fi
+          . "$NVM_DIR/nvm.sh"
+          nvm install 22
+          nvm use 22
+          echo "$NVM_DIR/versions/node/$(nvm version 22)/bin" >> "$GITHUB_PATH"
+          corepack enable
+          corepack prepare pnpm@10.0.0 --activate
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -43,7 +56,14 @@ jobs:
     name: Rust tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
 
       - name: Install Linux dependencies
         run: |
@@ -55,11 +75,12 @@ jobs:
             patchelf \
             libssl-dev
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: apps/desktop/src-tauri
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Rust tests
         working-directory: apps/desktop/src-tauri
