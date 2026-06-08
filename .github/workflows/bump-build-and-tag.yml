@@ -1,8 +1,9 @@
 name: Bump Build And Tag
 
 on:
-  pull_request:
-    types: [closed]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 permissions:
   contents: write
@@ -15,19 +16,37 @@ jobs:
   bump-and-tag:
     name: Bump build and create tag
     if: >-
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.base.ref == 'main' &&
-      github.actor != 'github-actions[bot]'
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      !startsWith(github.event.workflow_run.head_commit.message, 'chore(release): bump build to ')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: main
+      - name: Checkout repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin main
+          git checkout -B main FETCH_HEAD
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - name: Install Node.js and pnpm
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NVM_DIR="$HOME/.nvm"
+          if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+            curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+          fi
+          . "$NVM_DIR/nvm.sh"
+          nvm install 22
+          nvm use 22
+          echo "$NVM_DIR/versions/node/$(nvm version 22)/bin" >> "$GITHUB_PATH"
+          corepack enable
+          corepack prepare pnpm@10.0.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Bump build number
         run: node packages/version/scripts/sync-version.mjs --bump build
