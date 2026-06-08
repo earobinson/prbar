@@ -82,6 +82,27 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
+      - name: Install Node.js and pnpm
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NVM_DIR="$HOME/.nvm"
+          if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+            curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+          fi
+          . "$NVM_DIR/nvm.sh"
+          nvm install 22
+          nvm use 22
+          echo "$NVM_DIR/versions/node/$(nvm version 22)/bin" >> "$GITHUB_PATH"
+          corepack enable
+          corepack prepare pnpm@10.0.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate app icons
+        run: pnpm --filter @prbar/desktop generate:icons
+
       - name: Rust tests
         working-directory: apps/desktop/src-tauri
         run: cargo test
