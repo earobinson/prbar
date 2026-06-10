@@ -66,10 +66,17 @@ jobs:
 
       - name: Commit bumped build
         shell: bash
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           set -euo pipefail
+          if [[ -z "${RELEASE_TOKEN:-}" ]]; then
+            echo "::error::RELEASE_TOKEN secret is not set. Add a PAT named RELEASE_TOKEN with 'contents: write' that can bypass the main branch ruleset."
+            exit 1
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
           git add -A
           if git diff --cached --quiet; then
@@ -82,9 +89,16 @@ jobs:
 
       - name: Tag release commit
         shell: bash
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           set -euo pipefail
+          if [[ -z "${RELEASE_TOKEN:-}" ]]; then
+            echo "::error::RELEASE_TOKEN secret is not set. Add a PAT named RELEASE_TOKEN with 'contents: write' that can bypass the main branch ruleset."
+            exit 1
+          fi
           tag="${{ steps.version.outputs.tag }}"
+          git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
           if git rev-parse "$tag" >/dev/null 2>&1; then
             echo "Tag already exists: $tag"
