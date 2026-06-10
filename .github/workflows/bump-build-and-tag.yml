@@ -7,14 +7,17 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: bump-build-main
   cancel-in-progress: false
 
 jobs:
-  bump-and-tag:
-    name: Bump build and create tag
+  # Step 1: a normal (non-bump) commit landed on main. Open a PR that bumps the
+  # build number and let it auto-merge through the branch ruleset (PR + checks).
+  open-bump-pr:
+    name: Open build-bump pull request
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'main' &&
@@ -57,36 +60,107 @@ jobs:
         run: |
           set -euo pipefail
           version="$(node -e "const v=require('./packages/version/src/version.json'); process.stdout.write(v.major + '.' + v.minor + '.' + v.patch + '.' + v.build);")"
-          release_date="$(date -u +%F)"
-          tag="release/${release_date}/${version}"
-
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "release_date=$release_date" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      - name: Commit bumped build
+      - name: Open auto-merge pull request
         shell: bash
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [[ -z "${RELEASE_TOKEN:-}" ]]; then
+            echo "::error::RELEASE_TOKEN secret is not set. Add a PAT named RELEASE_TOKEN with 'contents: write' and 'pull-requests: write'."
+            exit 1
+          fi
 
-          git add -A
-          if git diff --cached --quiet; then
+          version="${{ steps.version.outputs.version }}"
+          # The bump prefix below is also the loop guard. The squash-merge subject
+          # MUST keep this prefix so the resulting commit on main is skipped here.
+          title="chore(release): bump build to ${version}"
+
+          if git diff --quiet; then
             echo "No version changes to commit."
             exit 0
           fi
 
-          git commit -m "chore(release): bump build to ${{ steps.version.outputs.version }}"
-          git push origin main
+          branch="automation/bump-build-${version}-${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
-      - name: Tag release commit
+          git checkout -b "$branch"
+          git add -A
+          git commit -m "$title"
+          git push origin "$branch"
+
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "$title" \
+            --body "Automated build-number bump. Auto-merges once required checks pass."
+
+          # Squash auto-merge respects the ruleset (PR + status checks, 0 approvals).
+          # --subject pins the squash commit subject so the loop guard matches it.
+          gh pr merge "$branch" --squash --auto --subject "$title" --delete-branch
+
+  # Step 2: the bump PR merged, so main now carries the bump commit. Tag it.
+  # This job does NOT push to a branch, so it cannot re-trigger CI -> no loop.
+  tag-release:
+    name: Tag merged build bump
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      startsWith(github.event.workflow_run.head_commit.message, 'chore(release): bump build to ')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
         shell: bash
         run: |
           set -euo pipefail
-          tag="${{ steps.version.outputs.tag }}"
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --no-tags --depth=1 origin main
+          git checkout -B main FETCH_HEAD
 
-          if git rev-parse "$tag" >/dev/null 2>&1; then
+      - name: Install Node.js
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NVM_DIR="$HOME/.nvm"
+          if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+            curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+          fi
+          . "$NVM_DIR/nvm.sh"
+          nvm install 22
+          nvm use 22
+          echo "$NVM_DIR/versions/node/$(nvm version 22)/bin" >> "$GITHUB_PATH"
+
+      - name: Read version metadata
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -e "const v=require('./packages/version/src/version.json'); process.stdout.write(v.major + '.' + v.minor + '.' + v.patch + '.' + v.build);")"
+          release_date="$(date -u +%F)"
+          tag="release/${release_date}/${version}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push release tag
+        shell: bash
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_TOKEN:-}" ]]; then
+            echo "::error::RELEASE_TOKEN secret is not set."
+            exit 1
+          fi
+          tag="${{ steps.version.outputs.tag }}"
+          git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          if git ls-remote --tags origin "refs/tags/${tag}" | grep -q "refs/tags/${tag}$"; then
             echo "Tag already exists: $tag"
             exit 0
           fi
