@@ -115,23 +115,18 @@ jobs:
             rustup target add "$target"
           fi
 
-      - name: Install Node.js and pnpm
+      - name: Install pnpm
         shell: bash
         run: |
-          # nvm is not compatible with `set -u`: on runners that already have
-          # global npm modules (macOS/Windows images ship corepack globally),
-          # `nvm install` dereferences unbound variables and exits non-zero.
+          # The macOS and Windows runners ship Node.js preinstalled. nvm is
+          # unusable here: sourcing nvm.sh aborts under `set -e`, and nvm-sh has
+          # no Windows support at all (Git Bash). Use the system Node + corepack
+          # so the same step works on every platform.
           set -eo pipefail
-          export NVM_DIR="$HOME/.nvm"
-          if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
-            curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-          fi
-          . "$NVM_DIR/nvm.sh"
-          nvm install 22
-          nvm use 22
-          echo "$NVM_DIR/versions/node/$(nvm version 22)/bin" >> "$GITHUB_PATH"
           corepack enable
           corepack prepare pnpm@10.0.0 --activate
+          node --version
+          pnpm --version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -178,17 +173,14 @@ jobs:
             target="${{ matrix.args }}"
             target="${target#--target }"
             bundle_dir="apps/desktop/src-tauri/target/${target}/release/bundle"
-            bin_dir="apps/desktop/src-tauri/target/${target}/release"
           else
             bundle_dir="apps/desktop/src-tauri/target/release/bundle"
-            bin_dir="apps/desktop/src-tauri/target/release"
           fi
 
-          # Only collect final distributable bundles. A plain `find -type f`
-          # also sweeps in the AppImage's PRBar.AppDir/ staging tree, which
-          # contains shared libs and duplicate icon files named `prbar.png`;
-          # uploading duplicate basenames makes `gh release upload --clobber`
-          # 404 on the colliding asset.
+          # Only upload end-user installers. Everything else the Tauri bundler
+          # emits (raw `prbar`/`prbar.exe` binaries, the updater archives
+          # `*.app.tar.gz` / `*.nsis.zip` and their `.sig` files, and the
+          # AppImage's PRBar.AppDir/ staging tree) is excluded.
           files=()
           while IFS= read -r f; do
             files+=("$f")
@@ -197,36 +189,12 @@ jobs:
             -name '*.rpm' -o \
             -name '*.AppImage' -o \
             -name '*.dmg' -o \
-            -name '*.app.tar.gz' -o \
-            -name '*.app.tar.gz.sig' -o \
             -name '*.msi' -o \
-            -name '*.exe' -o \
-            -name '*.nsis.zip' \
+            -name '*.exe' \
           \))
 
-          case "${{ matrix.platform }}" in
-            windows-latest)
-              suffix="${target:-x86_64-pc-windows-msvc}"
-              [[ -f "$bin_dir/prbar.exe" ]] && {
-                cp "$bin_dir/prbar.exe" "$bin_dir/prbar-${suffix}.exe"
-                files+=("$bin_dir/prbar-${suffix}.exe")
-              }
-              ;;
-            *)
-              if [[ "${{ matrix.platform }}" == ubuntu-latest ]]; then
-                suffix="${target:-x86_64-unknown-linux-gnu}"
-              else
-                suffix="${target:?macOS builds must set a target triple}"
-              fi
-              [[ -f "$bin_dir/prbar" ]] && {
-                cp "$bin_dir/prbar" "$bin_dir/prbar-${suffix}"
-                files+=("$bin_dir/prbar-${suffix}")
-              }
-              ;;
-          esac
-
           if [[ ${#files[@]} -eq 0 ]]; then
-            echo "No release artifacts found to upload."
+            echo "No release installers found to upload."
             exit 1
           fi
 
