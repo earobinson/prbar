@@ -137,6 +137,10 @@ pnpm build:release -- --bundles dmg
 
 Release artifacts for macOS (Apple Silicon & Intel), Windows x64, and Linux x64
 are produced automatically by the `Release` GitHub Actions workflow on tag push.
+Each platform's installers/bundles are uploaded alongside the standalone
+executable, which is named with its Rust target triple (for example
+`prbar-aarch64-apple-darwin` or `prbar-x86_64-unknown-linux-gnu`) so assets from
+the different build jobs never collide.
 
 The release build regenerates the desktop icon assets from
 `apps/desktop/src-tauri/app-icon.svg` before bundling.

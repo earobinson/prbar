@@ -118,7 +118,10 @@ jobs:
       - name: Install Node.js and pnpm
         shell: bash
         run: |
-          set -euo pipefail
+          # nvm is not compatible with `set -u`: on runners that already have
+          # global npm modules (macOS/Windows images ship corepack globally),
+          # `nvm install` dereferences unbound variables and exits non-zero.
+          set -eo pipefail
           export NVM_DIR="$HOME/.nvm"
           if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
             curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
@@ -181,17 +184,44 @@ jobs:
             bin_dir="apps/desktop/src-tauri/target/release"
           fi
 
+          # Only collect final distributable bundles. A plain `find -type f`
+          # also sweeps in the AppImage's PRBar.AppDir/ staging tree, which
+          # contains shared libs and duplicate icon files named `prbar.png`;
+          # uploading duplicate basenames makes `gh release upload --clobber`
+          # 404 on the colliding asset.
           files=()
           while IFS= read -r f; do
             files+=("$f")
-          done < <(find "$bundle_dir" -type f)
+          done < <(find "$bundle_dir" -type f \( \
+            -name '*.deb' -o \
+            -name '*.rpm' -o \
+            -name '*.AppImage' -o \
+            -name '*.dmg' -o \
+            -name '*.app.tar.gz' -o \
+            -name '*.app.tar.gz.sig' -o \
+            -name '*.msi' -o \
+            -name '*.exe' -o \
+            -name '*.nsis.zip' \
+          \))
 
           case "${{ matrix.platform }}" in
             windows-latest)
-              [[ -f "$bin_dir/prbar.exe" ]] && files+=("$bin_dir/prbar.exe")
+              suffix="${target:-x86_64-pc-windows-msvc}"
+              [[ -f "$bin_dir/prbar.exe" ]] && {
+                cp "$bin_dir/prbar.exe" "$bin_dir/prbar-${suffix}.exe"
+                files+=("$bin_dir/prbar-${suffix}.exe")
+              }
               ;;
             *)
-              [[ -f "$bin_dir/prbar" ]] && files+=("$bin_dir/prbar")
+              if [[ "${{ matrix.platform }}" == ubuntu-latest ]]; then
+                suffix="${target:-x86_64-unknown-linux-gnu}"
+              else
+                suffix="${target:?macOS builds must set a target triple}"
+              fi
+              [[ -f "$bin_dir/prbar" ]] && {
+                cp "$bin_dir/prbar" "$bin_dir/prbar-${suffix}"
+                files+=("$bin_dir/prbar-${suffix}")
+              }
               ;;
           esac
 
